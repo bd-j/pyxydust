@@ -1,3 +1,16 @@
-pxydust: 
+pyxydust: 
 
 python code for fitting astrophysical dust emission models (to image pixels)
+
+with inspiration from 
+ k_correct
+ EZGAL
+
+and relying heavily on the Draine & Li 2007 dust models
+as well as emcee
+
+
+This code is very slow currently. 
+
+There is no warranty
+

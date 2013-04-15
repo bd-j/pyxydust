@@ -5,6 +5,7 @@
 #     parameter.  Also, plot some joint distributions for
 #     selected pixels.
 
+#import numpy as np
 import numpy as np
 import os, time
 import pyfits
@@ -13,6 +14,9 @@ import emcee
 import observate
 import dustmodel
 import utils
+
+import matplotlib.pyplot as pl
+#from dustplot import *
 
 ############### USER INPUTS ###########
 
@@ -43,11 +47,59 @@ errnamelist = ['%s_%s.fits' % (path,name) for name in errnamelist]
 
 ############### END USER INPUT ##########
 
+def plot_all_samples2d(sourcename):
+    pl.figure(1,(12.0,12.0),dpi=600)
+    for i in range(npar):
+        for j in range(i,npar):
+            pl.subplot(npar,npar,1+j*npar+i)
+                
+            if i != j:
+                pl.plot( allpars[i,:], allpars[j,:],
+                         linestyle='none', marker='o', color='red', mec='red',
+                        alpha=.3, label='Posterior', zorder=-99, ms=1.0)
+                if par_log[i] == 1 : pl.xscale('log')
+                if par_log[j] == 1 : pl.yscale('log')
+                if i == 0 :
+                    locs,labs = pl.yticks()
+                    labs=[]
+                    for k in range(locs.shape[0]) : labs.append(str(locs[k]))
+                    pl.yticks(locs,labs,fontsize=6)
+                    pl.ylabel(par_names[j],fontsize=7)                
+                else:
+                    pl.yticks([])
+                if j == (npar-1) :
+                    locs,labs=pl.xticks()
+                    labs=[]
+                    for k in range(locs.shape[0]) : labs.append(str(locs[k]))
+                    pl.xlabel(par_names[i],fontsize=7)
+                    pl.xticks(locs,labs,fontsize=6)
+                else:
+                    pl.xticks([])
+
+            else:
+                pl.hist(allpars[i,:],30)
+                ax = pl.gca()
+                ax.xaxis.set_ticks_position('top')
+                ax.xaxis.set_label_position('top')
+                if par_log[i] == 1 : pl.xscale('log')
+                if par_log[j] == 1 : pl.yscale('log')
+                locs, labs = pl.xticks()
+                labs=[]
+                for k in range(locs.shape[0]) : labs.append(str(locs[k]))
+                #pl.ylabel('',fontsize=7)
+                pl.xticks(locs,labs,fontsize=6)
+                pl.yticks([])
+                pl.xlabel(par_names[i],fontsize=7)
+                
+            #tight_layout(0.1)
+    pl.savefig('%s_param_dist.png' %sourcename)
+    pl.close(1)
+    
 
 #####
 ##### function to obtain model SED #####
 #####
-def model(umin,umax,gamma,qpah):
+def model(umin,umax,gamma,qpah,mdust=1):
     alpha = 2.0 #model library does not have other alphas
     spec = dl07.generateSpectrum(umin,umax,gamma,qpah,alpha)
     sed = observate.getSED(dl07.wavelength,spec,filterlist)
@@ -55,12 +107,13 @@ def model(umin,umax,gamma,qpah):
     #Units are L_sun/M_sun, i.e. this is U_bar*P_o. need to add wavelength limits.
     inds=np.where(np.logical_and(dl07.wavelength < wave_max, dl07.wavelength >= wave_min))
     lbol = dl07.convert_to_lsun*np.trapz(spec[inds],dl07.wavelength[inds]) 
-    return sed, lbol
+    return sed*mdust, lbol*mdust
 
 #####
 ##### function to obtain likelihood ####
 #####
 #def lnprob(theta,obs_maggies,obs_ivar,mask):
+#@profile
 def lnprob(theta, obs, err, mask):
 
     #prior bounds check
@@ -79,6 +132,7 @@ def lnprob(theta, obs, err, mask):
         sed_maggies = 10**(0-sed[inds]/2.5)
         obs_maggies = 10**(0-obs[inds]/2.5)
         obs_ivar = (obs_maggies*err[inds]/1.086)**(-2)
+
         #best scale for these parameters
         mdust = ( (sed_maggies*obs_maggies*obs_ivar).sum() ) / ( ( (sed_maggies**2.0)*obs_ivar ).sum() )
         lbol = lbol*mdust
@@ -105,15 +159,16 @@ dl07=dustmodel.DraineLi()
 ##### parameter ranges for priors
 par_names = ['Umin','Umax','gamma','Qpah']
 par_range = np.array([[0.2,25],
-                      [100.0,dl07.model_lib.field('UMAX').max()],
+                      [100.0,dl07.model_lib['UMAX'].max()],
                       [0.00,0.5],
-            [dl07.model_lib.field('QPAH').min(),dl07.model_lib.field('QPAH').max()]])
+            [dl07.model_lib['QPAH'].min(),dl07.model_lib['QPAH'].max()]])
 
 par_range[0,:] = np.log10(par_range[0,:])
 par_range[1,:] = np.log10(par_range[1,:])
 
 par_names = ['Ldust','Mdust','Ubar']+par_names
 #par_units = 
+par_log=[0,0,0,0,1,0,0]
 
 ##### read the images and errors
 data_mag, data_magerr, header = utils.loadImageCube(imnamelist,errnamelist,fudge_err)
@@ -126,16 +181,17 @@ percentiles = np.array([0.16,0.5,0.84]) #output percentiles
 npar = len(par_names) #the ndim + mdust, ldust, ubar
 parval = np.zeros([nx,ny,npar,3]) 
 accepted = np.zeros([nx,ny])-99
-
+max_lnlike = np.zeros([nx,ny])-99
 ############################
 #### cry 'havoc'! ##########
 ############################
+#this is insane and slow when loping over pixels  Should just use a precomputed model grid
 
 ##### Sampler properties
 ndim = 4
 nwalkers = 12
 nsteps = 30
-nburn = 10
+nburn = 15
 nthreads = 2
 
 ####### Loop over pixels #######
@@ -144,11 +200,11 @@ g = np.where(data_mag < 0,1,0)
 g = np.where(np.isfinite(data_mag),g,0)
 goodpix = np.where(g.sum(2) == len(imnamelist)) #restrict to pixels with at least 5 bands
 
-raise ValueError("debug")
+#raise ValueError("debug")
 
 for ipix in xrange(goodpix[0].shape[0]):
     start = time.time()
-    ix, iy  = goodpix[0][ipix], goodpix[1][ipix]
+    ix, iy  = goodpix[0][ipix*10+2815], goodpix[1][ipix*10+2815]
 
     obs = data_mag[ix,iy,:]
     err = data_magerr[ix,iy,:]
@@ -177,7 +233,9 @@ for ipix in xrange(goodpix[0].shape[0]):
     accepted[ix,iy]=np.mean(sampler.acceptance_fraction)
     if (np.mean(sampler.acceptance_fraction) == 0.0) :
         raise ValueError("No Good Models") #debugging
-            
+    accepted[ix,iy]=np.mean(sampler.acceptance_fraction)
+    max_lnlike[ix,iy]=sampler.flatlnprobability.max()
+    
     #output
     nn = np.array(sampler.blobs)
     dustl = nn[:,:,0].reshape(nsteps*nwalkers)
@@ -189,16 +247,19 @@ for ipix in xrange(goodpix[0].shape[0]):
     ubar=(1-gamma)*(umin)+gamma*np.log(umax/umin)/(1/umin-1/umax)
 
     allpars=np.vstack((dustl,dustm,ubar,umin,umax,gamma,qpah))
+    sampler.reset() #done with the sampler
 
     #get the percentiles of the 1d marginalized posterior distribution
     for ipar in xrange(npar):
         par=np.sort(allpars[ipar,:])
         parval[ix,iy,ipar,:]=par[np.int_(np.round(par.shape[0]*percentiles))]
 
-    if ipix % 10 == 0:
+    if ipix%1 == 0:
         #plot and try to output the full sampler
+        plot_all_samples2d('results/x%s_y%s'%(ix,iy))
         #pass
-        raise ValueError("Debug")
+    if ipix == 20:
+        raise ValueError("Stop at ipix %s" %ipix)
 
 #write out the parval images
 for i in xrange(npar):
@@ -207,24 +268,4 @@ for i in xrange(npar):
         outfile= '%s_p%4.2f.fits' % (par_names[i],percentiles[j]) 
         pyfits.writeto(outfile,parval[:,:,i,j],header=header,clobber=True)
 
-
-def plotsamples2d(i,j):
-    figure(1)
-    xlabel(par_names[i], fontsize=18)
-    ylabel(par_names[j], fontsize=18)#,rotation=0
-
-    # plot prior samples complicated because of 10**umin and umax>umin
-    #    if (k >=0) and (h >=0) :
-    #    plot( np.random.uniform(par_range[k,0],par_range[h,1],nwalkers),
-    #          np.random.uniform(par_range[k,0],par_range[h,1],nwalkers),
-    #          linestyle='none', marker='o', color='blue', mec='blue',
-    #        alpha=.5, label='Prior', zorder=-100)
-
-    plot( allpars[i,:], allpars[j,:],
-          linestyle='none', marker='o', color='red', mec='red',
-        alpha=.5, label='Posterior', zorder=-99)
-    
-    legend()
-    axis([-1, 41, 10, 1e7])
-    savefig('param_dist.png')
 

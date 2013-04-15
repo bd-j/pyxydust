@@ -27,10 +27,10 @@ class DraineLi(object):
         Output units are erg/s/cm^2/AA/M_sun of dust at a distance of 10pc."""
         
         delta_spec = self.interpolateDT( self.delta_model_lib,
-                                         ['UMIN','QPAH'],np.array([umin,qpah]).reshape(2) )
+                                         ['UMIN','QPAH'], np.array([umin,qpah]).reshape(2) )
         if (gamma > 0):
             pdr_spec = self.interpolateDT( self.pdr_model_lib,
-                                           ['UMIN','UMAX','QPAH'],np.array([umin,umax,qpah]).reshape(3) )
+                                           ['UMIN','UMAX','QPAH'], np.array([umin,umax,qpah]).reshape(3) )
         else:
             pdr_spec = 0
             
@@ -55,7 +55,7 @@ class DraineLi(object):
         #an (npoints,ndim) array of model grid parameter values
         model_points=[]
         for f in rec_fields:
-            model_points.append(model_recs.field(f)) 
+            model_points.append(model_recs[f]) 
         model_points = np.array(model_points).transpose()
 
         #now delaunay triangulate and find the encompassing
@@ -73,9 +73,9 @@ class DraineLi(object):
         #(or triangulation) but this is a failsafe
         exact=np.where(dists == 0.)
         if (exact[0].shape[0] > 0):
-            spec = model_recs[inds[exact[0]]].field('F_LAMBDA')
+            spec = model_recs[inds[exact[0]]]['F_LAMBDA']
         else:
-            spec = ( weights* (model_recs[inds].field('F_LAMBDA').transpose()) ).sum(1)
+            spec = ( weights* (model_recs[inds]['F_LAMBDA'].transpose()) ).sum(1)
             spec = spec/( weights.sum() ) #renormalize
         return spec
 
@@ -91,11 +91,11 @@ class DraineLi(object):
     
         fits = pyfits.open( filename )
         self.model_lib = fits[1].data
-        self.wavelength = fits[1].data[0].field('WAVE')
-        delta_inds = np.where( np.logical_and( (self.model_lib.field('UMAX') == self.model_lib.field('UMIN')),
-                               (self.model_lib.field('GRAIN') == grain) ) )
-        pdr_inds = np.where( np.logical_and( (self.model_lib.field('UMAX') > self.model_lib.field('UMIN')),
-                             (self.model_lib.field('GRAIN') == grain) ) )
+        self.wavelength = fits[1].data[0]['WAVE']
+        delta_inds = np.where( np.logical_and( (self.model_lib['UMAX'] == self.model_lib['UMIN']),
+                               (self.model_lib['GRAIN'] == grain) ) )
+        pdr_inds = np.where( np.logical_and( (self.model_lib['UMAX'] > self.model_lib['UMIN']),
+                             (self.model_lib['GRAIN'] == grain) ) )
         self.delta_model_lib = self.model_lib[delta_inds]
         self.pdr_model_lib = self.model_lib[pdr_inds]
         fits.close()
