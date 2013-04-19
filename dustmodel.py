@@ -22,7 +22,7 @@ class SpecLibrary(object):
     def __init__(self):
         pass
 
-    def interpolateTo(self, target_point, fields=None, itype='dt',subinds=None, flux_field_name='F_LAMBDA'):
+    def interpolateTo(self, target_points, fieldnames=None, itype='dt',subinds=None, flux_field_name='F_LAMBDA'):
         """Method to obtain the model spectrum for a given set of parameter values
         via interpolation of the model grid. The interpolation weights are
         determined from barycenters of a Delaunay triangulation or nLinear interpolation
@@ -38,20 +38,23 @@ class SpecLibrary(object):
         
         #Note: should (but doesn't yet) check that point is in the grid
         #deal with recarray input
-        if fields is None:
+        
+        if fieldnames is None:
             fields = target_points.dtype.names #if the target point(s) is already a recarray use the field names
-            targets=np.array(target_points.tolist())
+            targets = np.array(target_points.tolist())
         else:
-            targets=target_points
-
-        if len(fields) != targets.shape(-1) :
-            raise ValueError('#Fields != number of dimensions of reqested target coordinates')
+            targets = target_points
+        if targets.ndim is 1:
+            targets=targets[np.newaxis,:]
+        
+        #if len(fields) != targets.shape(-1) :
+        #    raise ValueError('#Fields != number of dimensions of reqested target coordinates')
             
         #pull the grid points out of the model record data and make an (nmodel,ndim) array of
         #model grid parameter values.  need to loop to make sure order is correct
         model_points=[]
-        for f in fields:
-            model_points.append(np.squeeze(self.model_lib[subinds][f]))
+        for fname in fieldnames:
+            model_points.append(np.squeeze(self.model_lib[subinds][fname]))
         model_points = np.array(model_points).transpose() #(nmod, ndim)
 
         if itype is 'dt' :
@@ -82,14 +85,13 @@ class SpecLibrary(object):
         triangle_inds = dtri.find_simplex(target_points)
         #and get model indices of (hyper)triangle vertices. inds has shape (ntarg,ndim+1)
         inds = dtri.vertices[triangle_inds,:]
-
         #get the barycenter coordinates through matrix multiplication and dimensional juggling
         bary = np.dot( dtri.transform[triangle_inds,:ndim,:ndim],
                        (target_points-dtri.transform[triangle_inds,ndim,:]).reshape(-1,ndim,1) )
         oned = np.arange(triangle_inds.shape[0])
-        bary = np.squeeze(bary[oned,:,oned,:])
-        last = 1-bary.sum(axis=1) #the last coordinate is 1-sum of the other coordinates
-        weights = np.hstack((bary,last[:,newaxis]))
+        bary = np.atleast_2d(np.squeeze(bary[oned,:,oned,:])) #ok.  in np 1.7 can add an axis to squeeze
+        last = 1-bary.sum(axis=-1) #the last bary coordinate is 1-sum of the other coordinates
+        weights = np.hstack((bary,last[:,np.newaxis]))
 
         #loop implementation of the above
         #npts = triangle_inds.shape[0]
@@ -126,18 +128,18 @@ class DraineLi(SpecLibrary):
             self.model_file=modfile
         self.readFitsModelLibrary(self.model_file)
 
-    def generateSpectrum(self,umin,umax,gamma,qpah,alpha,m_dust = 1):
+    def generateSpectrum(self,umin,umax,gamma,qpah,alpha,mdust = 1):
         """Returns the IR SED of a model given the model parameters.
         calling sequence: DraineLi.generateSpectrum(umin, umax, gamma, qpah, alpha, mdust)
         Output units are erg/s/cm^2/AA at a distance of 10pc.
         mdust defaults to 1 solar mass"""
         
         delta_spec = self.interpolateTo( np.array([umin,qpah]).T,
-                                         fields = ['UMIN','QPAH'], subinds = self.delta_inds )
+                                         fieldnames = ['UMIN','QPAH'], subinds = self.delta_inds )
         pdr_spec = 0
         if (gamma > 0):
             pdr_spec = self.interpolateTo( np.array([umin,umax,qpah]).T,
-                                           fields = ['UMIN','UMAX','QPAH'], subinds = self.pdr_inds )
+                                           fieldnames = ['UMIN','UMAX','QPAH'], subinds = self.pdr_inds )
                     
         return mdust*(delta_spec*(1-gamma)+pdr_spec*gamma)
         
@@ -198,12 +200,12 @@ class ModifiedBB(SpecLibrary):
 
 ############ A method for detremining nLinear interpolation weights.  unfinished ########
 def weightsLinear(self,model_points,point):
-        """ The interpolation weights are determined from the distances to the nearest
-        grid points in each dimension.  There will be 2**ndim indices and weight products,
-        corresponding to the vertices of the (hyper)-square.  Therefore, this routine gets
-        nasty in high-dimensional spaces.  stay out of them. Requires rectilinearly gridded models.
-        see also scipy.ndimage.interpolate.map_coordinates """
-        #the n-Linear interpolation as defined here *is* invariant under rescaling of any dimension
+    """ The interpolation weights are determined from the distances to the nearest
+    grid points in each dimension.  There will be 2**ndim indices and weight products,
+    corresponding to the vertices of the (hyper)-square.  Therefore, this routine gets
+    nasty in high-dimensional spaces.  stay out of them. Requires rectilinearly gridded models.
+    see also scipy.ndimage.interpolate.map_coordinates """
+    #the n-Linear interpolation as defined here *is* invariant under rescaling of any dimension
             
     ndim=point.shape[0]
         #vectorize?  allow multiple points and/or remove loop over dimensions.  need to write

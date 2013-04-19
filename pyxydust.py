@@ -102,13 +102,13 @@ def plot_all_samples2d(sourcename):
 #####
 def model(umin,umax,gamma,qpah,mdust=1):
     alpha = 2.0 #model library does not have other alphas
-    spec = dl07.generateSpectrum(umin,umax,gamma,qpah,alpha)
+    spec = (dl07.generateSpectrum(umin,umax,gamma,qpah,alpha,mdust))[:,0]
     sed = observate.getSED(dl07.wavelength,spec,filterlist)
 
-    #Units are L_sun/M_sun, i.e. this is U_bar*P_o. need to add wavelength limits.
-    inds=np.where(np.logical_and(dl07.wavelength < wave_max, dl07.wavelength >= wave_min))
-    lbol = dl07.convert_to_lsun*np.trapz(spec[inds],dl07.wavelength[inds]) 
-    return sed*mdust, lbol*mdust
+    #Units are L_sun/M_sun, i.e. this is U_bar*P_o.
+    lbol = dl07.convert_to_lsun*observate.Lbol(dl07.wavelength,spec,wave_min=wave_min,wave_max=wave_max)
+
+    return sed, lbol
 
 #####
 ##### function to obtain likelihood ####
@@ -122,11 +122,11 @@ def lnprob(theta, obs, err, mask):
     for i,par in enumerate(theta):
         pcheck.append(par >= par_range[i,0])
         pcheck.append(par <= par_range[i,1])
-    pcheck.append(10**theta[1] >= 10**theta[0]) #require Umax >= Umin
+    pcheck.append(10**theta[1] >= theta[0]) #require Umax >= Umin
     
     if not (False in pcheck):
         #model sed (in AB absolute mag) for these parameters
-        sed, lbol = model(10**theta[0],10**theta[1],theta[2],theta[3])
+        sed, lbol = model(theta[0],10**theta[1],theta[2],theta[3])
         
         #linearize fluxes.  could move obs out of the loop
         inds = np.where(mask > 0)
@@ -159,12 +159,12 @@ dl07=dustmodel.DraineLi()
 
 ##### parameter ranges for priors
 par_names = ['Umin','Umax','gamma','Qpah']
-par_range = np.array([[0.2,25],
+par_range = np.array([[0.1,25],
                       [100.0,dl07.model_lib['UMAX'].max()],
                       [0.00,0.5],
             [dl07.model_lib['QPAH'].min(),dl07.model_lib['QPAH'].max()]])
 
-par_range[0,:] = np.log10(par_range[0,:])
+    #par_range[0,:] = np.log10(par_range[0,:])
 par_range[1,:] = np.log10(par_range[1,:])
 
 par_names = ['Ldust','Mdust','Ubar']+par_names
@@ -236,7 +236,7 @@ for ipix in xrange(goodpix[0].shape[0]):
     if (np.mean(sampler.acceptance_fraction) == 0.0) :
         raise ValueError("No Good Models") #debugging
     accepted[ix,iy]=np.mean(sampler.acceptance_fraction)
-    max_lnlike[ix,iy]=sampler.flatlnprobability.max()
+    max_lnprob[ix,iy]=sampler.flatlnprobability.max()
     
     #output
     nn = np.array(sampler.blobs)

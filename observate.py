@@ -125,14 +125,13 @@ class Filter(object):
      
 
     def objCounts(self, sourcewave, sourceflux, sourceflux_unc=0):
-        """getCounts
-        Convolve source spectrum with filter and return the detector signal
-        INPUTS:
-           sourcewave: spectrum wavelength, ndarray of shape (nwave)
-           sourceflux: associated flux (in erg/s/cm^2/AA), ndarray of shape (nwave,nspec)
+        """getCounts: Convolve source spectrum with filter and return the detector signal
+               sourcewave - spectrum wavelength (in AA), ndarray of shape (nwave)
+               sourceflux -  associated flux (in erg/s/cm^2/AA), ndarray of shape (nwave,nspec)
         OUTPUTS:
            <float>: Detector signals"""
 
+        ###need to vectorize#####
         #interpolate filter transmission to source spectrum
         newtrans = np.interp(sourcewave, self.wavelength,self.transmission, 
                                 left=0.,right=0.)
@@ -146,24 +145,12 @@ class Filter(object):
             return 0.
 
     def ABMag(self,sourcewave,sourceflux,sourceflux_unc=0):
-        """ABMag
-        Convolve source spectrum  with filter and return the AB magnitude
-        INPUTS:
-           sourcewave
-           sourceflux
-        OUTPUTS:
-           <float>: AB magnitude
+        """ABMag: Convolve source spectrum  with filter and return the AB magnitude
         """
         return 0-2.5*np.log10(self.objCounts(sourcewave,sourceflux)/self.ab_counts)
 
     def vegaMag(self,sourcewave,sourceflux,sourceflux_unc=0):
-        """vegaMag
-        Convolve source spectrum  with filter and return the Vega magnitude
-        INPUTS:
-           sourcewave
-           sourceflux
-        OUTPUTS:
-           <float>: Vega magnitude
+        """vegaMag: Convolve source spectrum  with filter and return the Vega magnitude
         """
         return 0-2.5*np.log10(self.objCounts(sourcewave,sourceflux)/self.vega_counts)        
 
@@ -199,6 +186,13 @@ def getSED(sourcewave,sourceflux,filterlist):
     return sed
 
 ###Routines for spectra######
+
+def Lbol(wave,spec,wave_min=90,wave_max = 1e6):
+    """assumes wavelength varies along last axis of spec"""
+    inds=np.where(np.logical_and(wave < wave_max, wave >= wave_min))
+    return np.trapz(spec[...,inds[0]],wave[inds])
+
+
 
 def air2vac(wave):
     """Convert from in-air wavelengths to vacuum wavelengths.  Based on Allen's Astrophysical Quantities"""
