@@ -47,6 +47,7 @@ errnamelist = ['%s_%s.fits' % (path,name) for name in errnamelist]
 
 ############### END USER INPUT ##########
 
+#plotting of posterior samples
 def plot_all_samples2d(sourcename):
     pl.figure(1,(12.0,12.0),dpi=600)
     for i in range(npar):
@@ -181,7 +182,8 @@ percentiles = np.array([0.16,0.5,0.84]) #output percentiles
 npar = len(par_names) #the ndim + mdust, ldust, ubar
 parval = np.zeros([nx,ny,npar,3]) 
 accepted = np.zeros([nx,ny])-99
-max_lnlike = np.zeros([nx,ny])-99
+max_lnprob = np.zeros([nx,ny])-99
+
 ############################
 #### cry 'havoc'! ##########
 ############################
@@ -254,7 +256,7 @@ for ipix in xrange(goodpix[0].shape[0]):
         par=np.sort(allpars[ipar,:])
         parval[ix,iy,ipar,:]=par[np.int_(np.round(par.shape[0]*percentiles))]
 
-    if ipix%1 == 0:
+    if ipix % 1 == 0:
         #plot and try to output the full sampler
         plot_all_samples2d('results/x%s_y%s'%(ix,iy))
         #pass
