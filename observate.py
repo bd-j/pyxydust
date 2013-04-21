@@ -46,10 +46,14 @@ class Filter(object):
     ab_gnu=3.631e-20   #AB reference spctrum in erg/s/cm^2/Hz
     npts=0
     
-    def __init__(self, kname='sdss_r0', nick='r'):
+    def __init__(self, kname='sdss_r0', nick=None):
         """Constructor"""
         self.name = kname
-        self.nick = nick
+        if nick is None :
+            self.nick = kname
+        else:
+            self.nick=nick
+
         self.filename = os.getenv('KCORRECT_DIR')+'/data/filters/'+kname+'.par'
         if type( self.filename ) == type( '' ):
             if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file does not exist!' )
@@ -61,7 +65,7 @@ class Filter(object):
         wavelength and transmission arrays.  Then determine a
         number of filter properties and store in the object."""
 
-        #This should be replaced with the sdsspy yanny file readers # done kept here in case reversion required
+        #This should be replaced with the sdsspy yanny file readers # done, kept here in case reversion required
         #f=open(filename,'rU')
         #wave=[]
         #trans=[]
@@ -75,7 +79,6 @@ class Filter(object):
         #            trans.append(float(cols[2]))
         #f.close()
 
-        #f = yanny.Yanny(filename)
         ff = yanny.read(filename,one=True)
         wave = ff['lambda']
         trans = ff['pass']
@@ -122,25 +125,27 @@ class Filter(object):
         Plot the filter transmission curve"""
         if self.npts > 0:
             plt.plot(self.wavelength,self.transmission)
-     
+            plt.title(self.name)
 
     def objCounts(self, sourcewave, sourceflux, sourceflux_unc=0):
         """getCounts: Convolve source spectrum with filter and return the detector signal
                sourcewave - spectrum wavelength (in AA), ndarray of shape (nwave)
-               sourceflux -  associated flux (in erg/s/cm^2/AA), ndarray of shape (nwave,nspec)
-        OUTPUTS:
-           <float>: Detector signals"""
+               sourceflux -  associated flux (in erg/s/cm^2/AA), ndarray of shape (nspec,nwave)
+               output: float Detector signals (nspec)"""
 
-        ###need to vectorize#####
+
         #interpolate filter transmission to source spectrum
         newtrans = np.interp(sourcewave, self.wavelength,self.transmission, 
                                 left=0.,right=0.)
+            #print(self.name,sourcewave.shape,self.wavelength.shape,newtrans.shape)
+        
         #integrate lambda*f_lambda*R
 	if True in (newtrans > 0.):
             ind = np.where(newtrans > 0.)
-            counts = np.trapz(sourcewave[ind]*newtrans[ind]*sourceflux[ind], sourcewave[ind],axis=0)
-            if np.isinf(counts) : print(self.name, "Warn for inf value")
-            return counts
+            ind=ind[0]
+            counts = np.trapz(sourcewave[ind]*newtrans[ind]*sourceflux[...,ind], sourcewave[ind],axis=-1)
+            #if  np.isinf(counts).any() : print(self.name, "Warn for inf value")
+            return np.squeeze(counts)
 	else:
             return 0.
 
@@ -158,7 +163,7 @@ class Filter(object):
 ###Useful utilities#####
 
 def loadFilters(filternamelist):
-    """Given a list of fileter names, this method returns a list of Filter objects"""
+    """Given a list of filter names, this method returns a list of Filter objects"""
     filterlist=[]
     for f in filternamelist:
         filterlist.append(Filter(f))
@@ -166,24 +171,18 @@ def loadFilters(filternamelist):
 
 def getSED(sourcewave,sourceflux,filterlist):
     """Takes wavelength array [ndarray of shape (nwave)], a flux
-    array [ndarray of shape (nwave,nsource)] and list of Filter objects
-    and returns the AB mag SED [ndarray of shape (nfilter, nsource)]"""
+    array [ndarray of shape (nsource,nwave)] and list of Filter objects
+    and returns the AB mag SED [ndarray of shape (nsource,nfilter)]"""
 
-    sedshape=[len(filterlist)]
-    #This is an ugly workaround to vectorize
-    if (sourceflux.ndim > 1) :
-        sedshape.append(sourceflux.shape[1])
-        sed = np.zeros(sedshape)
-        for i,f in enumerate(filterlist):
-            sed[i,:]=f.ABMag(sourcewave,sourceflux)
-
-    else:
-        sed = np.zeros(sedshape)
-        for i,f in enumerate(filterlist):
-            sed[i]=f.ABMag(sourcewave,sourceflux)
+    sourceflux=np.atleast_2d(sourceflux)
+    sedshape = [sourceflux.shape[0], len(filterlist)]
+    sed = np.zeros(sedshape)
+    for i,f in enumerate(filterlist):
+        sed[:,i]=f.ABMag(sourcewave,sourceflux)
 
 
-    return sed
+
+    return np.squeeze(sed)
 
 ###Routines for spectra######
 

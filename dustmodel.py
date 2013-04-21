@@ -15,14 +15,20 @@ kboltz = constants.k_B.cgs.value
 
 class SpecLibrary(object):
     """Class to operate on spectral libraries. Methods are provided to interpolate the
-    available model spectra (stored as a rec array or FITS rec array) to a certain
+    available model spectra (stored as a recarray or pyfits FITS recarray) to a certain
     set of parameters.  Subclasses are used to return the actual model spectrum given
     a set of model parameters """
 
+    flux_unit = 'erg/s/cm^2/AA of 1solar mass at 10pc' 
+    flux_fieldname = 'F_LAMBDA'
+    
     def __init__(self):
         pass
 
-    def interpolateTo(self, target_points, fieldnames=None, itype='dt',subinds=None, flux_field_name='F_LAMBDA'):
+    def parRange(self,parname, inds=None):
+        return ( np.min(self.model_lib[inds][parname]),np.max(self.model_lib[inds][parname]) )
+        
+    def interpolateTo(self, target_points, fieldnames=None, itype='dt',subinds=None ):
         """Method to obtain the model spectrum for a given set of parameter values
         via interpolation of the model grid. The interpolation weights are
         determined from barycenters of a Delaunay triangulation or nLinear interpolation
@@ -40,14 +46,12 @@ class SpecLibrary(object):
         #deal with recarray input
         
         if fieldnames is None:
-            fields = target_points.dtype.names #if the target point(s) is already a recarray use the field names
+            fieldnames = target_points.dtype.names #if the target point(s) is already a struct array use the field names
             targets = np.array(target_points.tolist())
         else:
             targets = target_points
-        if targets.ndim is 1:
-            targets=targets[np.newaxis,:]
-        
-        #if len(fields) != targets.shape(-1) :
+        targets=np.atleast_2d(targets)
+        #if len(fieldnames) != targets.shape(-1) :
         #    raise ValueError('#Fields != number of dimensions of reqested target coordinates')
             
         #pull the grid points out of the model record data and make an (nmodel,ndim) array of
@@ -56,15 +60,11 @@ class SpecLibrary(object):
         for fname in fieldnames:
             model_points.append(np.squeeze(self.model_lib[subinds][fname]))
         model_points = np.array(model_points).transpose() #(nmod, ndim)
-
-        if itype is 'dt' :
-            inds, weights = self.weightsDT(model_points,targets)
-        else:
-            raise ValueError('Only DT weighting available currently')
-            #inds, weights = self.weightsLinear(model_points, point)
-
-        #weight using broadcasting, them sum the weighted spectra and return (nwave,ntarg)
-        return ( weights* (self.model_lib[subinds[inds]][flux_field_name].transpose(2,0,1)) ).sum(axis=2)
+        
+        inds, weights = self.weightsDT(model_points,targets)
+        
+        #weight using broadcasting, then sum the weighted spectra and return (nwave,ntarg)
+        return ( weights* (self.model_lib[subinds[inds]][self.flux_fieldname].transpose(2,0,1)) ).sum(axis=2)
 
 
     def weightsDT(self,model_points,target_points):
@@ -73,7 +73,7 @@ class SpecLibrary(object):
         the use of irregular Nd grids. see also weightsLinear.
           model_points - array of shape (nmod, ndim)
           target_points - array of shape (ntarg,ndim)
-          output inds and weights - harrays of shape (npts,ndim+1)"""
+          output inds and weights - arrays of shape (npts,ndim+1)"""
 
         #Note: should (but doesn't yet) allow for grid (and point) to be scaled in any or
         #all dimensions.  The DT is *not* invariant under scaling.
@@ -99,17 +99,6 @@ class SpecLibrary(object):
         #for i in xrange(npts):
         #    bary[i,:-1]= np.dot( dtri.transform[triangle_inds[0],:ndim,:ndim],
         #                       (target_points-dtri.transform[triangle_inds[i],ndim,:])
-
-        #IDW weighting below:
-        #dists = np.sqrt( ( (dtri.points[inds]-point)**2 ).sum(1) )
-        #weights = 1.0/dists
-        #interpolate only if you need to.  should probably check before interpolation is run
-        #(or triangulation) but this is a failsafe
-        #exact = np.where(dists == 0.)
-        #if (exact[0].shape[0] > 0):
-        #    weights = np.array([1.0])
-        #    inds = inds[exact[0]]
-        #need to renormalize
             
         return inds, weights 
                
@@ -118,31 +107,49 @@ class DraineLi(SpecLibrary):
     """DraineLi:: Class to store and operate on Draine & Li 2007 models"""
 
     #spectra in this file are in erg/s/cm^2/AA/M_sun of dust at a distance of 10pc
-    model_file=os.getenv('pyxydust')+'/data/models/DL07.fits'
+    model_file = os.getenv('pyxydust')+'/data/models/DL07.fits'
     
     #from model fluxes to Lsun per Msun of dust
     convert_to_lsun = 10**( np.log10(4.0*np.pi)+2*np.log10(pc*10)-np.log10(lsun) ) 
+    flux_fieldname = 'F_LAMBDA'
 
     def __init__(self,modfile=None):
         if modfile is not(None) :
             self.model_file=modfile
         self.readFitsModelLibrary(self.model_file)
 
+    def parNames(self):
+        return ['UMIN','UMAX','QPAH']
+
+    def spectraFromPars(self,pars):
+        """ wrapper on generateSpectrum that parses a pars structured array for the required parameters"""
+        alpha = 2
+        mdust = 1
+            
+        return self.generateSpectrum(pars['UMIN'], pars['UMAX'], pars['GAMMA'], pars['QPAH'],alpha,mdust=mdust)
+
+
     def generateSpectrum(self,umin,umax,gamma,qpah,alpha,mdust = 1):
         """Returns the IR SED of a model given the model parameters.
         calling sequence: DraineLi.generateSpectrum(umin, umax, gamma, qpah, alpha, mdust)
         Output units are erg/s/cm^2/AA at a distance of 10pc.
-        mdust defaults to 1 solar mass"""
+        mdust defaults to 1 solar mass.  """
+
+        if False in [umin.shape[0] == umax.shape[0],umin.shape[0] == qpah.shape[0]] :
+            raise ValueError("DraineLi.generateSpectrum: parameter array sizes do not match")
         
         delta_spec = self.interpolateTo( np.array([umin,qpah]).T,
                                          fieldnames = ['UMIN','QPAH'], subinds = self.delta_inds )
         pdr_spec = 0
-        if (gamma > 0):
+        if True in (gamma > 0):
             pdr_spec = self.interpolateTo( np.array([umin,umax,qpah]).T,
                                            fieldnames = ['UMIN','UMAX','QPAH'], subinds = self.pdr_inds )
                     
-        return mdust*(delta_spec*(1-gamma)+pdr_spec*gamma)
-        
+        return mdust*(delta_spec*(1.0-gamma)+pdr_spec*gamma)
+                
+    
+    def ubar(self,umin,umax,gamma,alpha=2):
+        return (1-gamma)*(umin)+gamma*np.log(umax/umin)/(1/umin-1/umax)
 
     def readFitsModelLibrary(self,filename,grain='MW3.1'):
         """Read in the dust SED library of Draine & Li 2007, stored as a
@@ -178,6 +185,11 @@ class ModifiedBB(SpecLibrary):
 
     def __init__(wavelengths):
         self.wavelength=wavelengths
+
+    def spectraFromPars(self,pars):
+        """ wrapper on generateSpectrum that parses a pars structured array for the required parameters"""            
+        return self.generateSpectrum(pars['T_DUST'], pars['BETA'], pars['M_DUST'] )
+
         
     def generateSpectrum(self, T_dust, beta, M_dust, kappa_lambda0=(1.92, 350e4)):
         """Method to return the spectrum given a list or array of temperatures,
@@ -198,56 +210,67 @@ class ModifiedBB(SpecLibrary):
         
 
 
-############ A method for detremining nLinear interpolation weights.  unfinished ########
-def weightsLinear(self,model_points,point):
-    """ The interpolation weights are determined from the distances to the nearest
-    grid points in each dimension.  There will be 2**ndim indices and weight products,
-    corresponding to the vertices of the (hyper)-square.  Therefore, this routine gets
-    nasty in high-dimensional spaces.  stay out of them. Requires rectilinearly gridded models.
-    see also scipy.ndimage.interpolate.map_coordinates """
-    #the n-Linear interpolation as defined here *is* invariant under rescaling of any dimension
-            
-    ndim=point.shape[0]
-        #vectorize?  allow multiple points and/or remove loop over dimensions.  need to write
-        #down the math that will speed this up. or turn into a ufunc
-    for idim in xrange(ndim):
-            #unique sorted model grid point values and
-            #distance from point (n_uniqueval)
-        model_vals = np.unique(model_thisdim)
-        dp = point[idim] - model_vals
+############ A method for determining nLinear interpolation weights.  unfinished ########
 
-            #get the weight of the lower bounding model grid point.  The weight
-            #will be zero if grid point is higher than target (dp < 0) or grid point 
-            #one grid step or more less than target (dp/dbin >= 1) 
-        dbin = np.append(model_vals[1:]-model_vals[:-1],-1) #distance from grid point to next highest
-        w1 = (1-dp/dbin) * (dp >= 0) *  (dp/dbin < 1)
-            #if w1<0 that means target was above the whole grid, use nearest grid (which has w1<0)
-        w1 = np.where(w1 >= 0, w1,1) 
+#def weightsLinear(self,model_points,point):
+#    """ The interpolation weights are determined from the distances to the nearest
+#    grid points in each dimension.  There will be 2**ndim indices and weight products,
+#    corresponding to the vertices of the (hyper)-square.  Therefore, this routine gets
+#    nasty in high-dimensional spaces.  stay out of them. Requires rectilinearly gridded models.
+#    see also scipy.ndimage.interpolate.map_coordinates """
+#    #the n-Linear interpolation as defined here *is* invariant under rescaling of any dimension
+#            
+#    ndim=point.shape[0]
+#        #vectorize?  allow multiple points and/or remove loop over dimensions.  need to write
+#        #down the math that will speed this up. or turn into a ufunc
+#    for idim in xrange(ndim):
+#            #unique sorted model grid point values and
+#            #distance from point (n_uniqueval)
+#        model_vals = np.unique(model_thisdim)
+#        dp = point[idim] - model_vals
+#
+#            #get the weight of the lower bounding model grid point.  The weight
+#            #will be zero if grid point is higher than target (dp < 0) or grid point 
+#            #one grid step or more less than target (dp/dbin >= 1) 
+#        dbin = np.append(model_vals[1:]-model_vals[:-1],-1) #distance from grid point to next highest
+#        w1 = (1-dp/dbin) * (dp >= 0) *  (dp/dbin < 1)
+#            #if w1<0 that means target was above the whole grid, use nearest grid (which has w1<0)
+#        w1 = np.where(w1 >= 0, w1,1) 
+#
+#            #get the weight of the upper bounding model grid point by
+#            #reversing signs of above  The weight
+#            #will be zero if grid point is lower than target (dp < 0) or grid point 
+#            #one grid step or more more than target (dp/dbin >= 1)
+#        dp = dp*(-1)
+#        dbin = np.append(-1,model_vals[1:]-model_vals[:-1]) #distance from grid point to next lowest
+#        w2 = (1-dp/dbin) * (dp > 0) *  (dp/dbin < 1)
+#            #if w2<0 that means target was lower than the whole grid, use nearest grid (which has w1<0)
+#        w2 = np.where(w2 >= 0, w2,1) 
 
-            #get the weight of the upper bounding model grid point by
-            #reversing signs of above  The weight
-            #will be zero if grid point is lower than target (dp < 0) or grid point 
-            #one grid step or more more than target (dp/dbin >= 1)
-        dp = dp*(-1)
-        dbin = np.append(-1,model_vals[1:]-model_vals[:-1]) #distance from grid point to next lowest
-        w2 = (1-dp/dbin) * (dp > 0) *  (dp/dbin < 1)
-            #if w2<0 that means target was lower than the whole grid, use nearest grid (which has w1<0)
-        w2 = np.where(w2 >= 0, w2,1) 
-
-
-            #index into the model grid point values (nmod)
-        model_index = np.digitize(np.squeeze(model_points[idim,:]), model_vals)
+#            #index into the model grid point values (nmod)
+#        model_index = np.digitize(np.squeeze(model_points[idim,:]), model_vals)
         
-    bins=np.unique(model_points[idim,:])
-    ind=np.digitize(point[idim],bins)
+#    bins=np.unique(model_points[idim,:])
+#    ind=np.digitize(point[idim],bins)
 
-def testWeighting(self):
-    m=np.array([0.,1,2,3])
-    t=1.4
-    #assert (self.weightsLinear(m,t) is [1,2] ,[0.6,0.4])
-    t=1
-    #assert (self.weightsLinear(m,t) is [1] ,[1])
-    m=np.array([0,1,1,2,3])
-        
-    raise ValueError('No test written')
-    pass
+#IDW weighting below:
+#dists = np.sqrt( ( (dtri.points[inds]-point)**2 ).sum(1) )
+#weights = 1.0/dists
+#interpolate only if you need to.  should probably check before interpolation is run
+#(or triangulation) but this is a failsafe
+#exact = np.where(dists == 0.)
+#if (exact[0].shape[0] > 0):
+#    weights = np.array([1.0])
+#    inds = inds[exact[0]]
+#need to renormalize
+
+#def testWeighting():
+#    m=np.array([0.,1,2,3])
+#    t=1.4
+#    #assert (self.weightsLinear(m,t) is [1,2] ,[0.6,0.4])
+#    t=1
+#    #assert (self.weightsLinear(m,t) is [1] ,[1])
+#    m=np.array([0,1,1,2,3])
+#        
+#    raise ValueError('No test written')
+#    pass
