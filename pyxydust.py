@@ -11,9 +11,9 @@ import os, time
 import pyfits
 
 import observate
-import dustmodel
-import modelgrid
+import models
 import utils
+import statutil
 
 import matplotlib.pyplot as pl
 #from dustplot import *
@@ -27,6 +27,7 @@ import matplotlib.pyplot as pl
 wave_min, wave_max = 15e4, 1e7 #AA, range for determination of L_TIR
 fnamelist = ['spitzer_mips_24','herschel_pacs_70','herschel_pacs_100',
              'herschel_pacs_160','herschel_spire_250']
+nfilt = len(fnamelist)
 
 ##### Image file names
 #images should be convolved to a common resolution, pixel matched,
@@ -47,59 +48,35 @@ errnamelist = ['%s_%s.fits' % (path,name) for name in errnamelist]
 
 ############### END USER INPUT ##########
 
-#####
-##### function to obtain likelihood ####
-#####
-#def lnprob(theta,obs_maggies,obs_ivar,mask):
-
-def lnprob_grid(grid, obs, err, mask):
-    #linearize fluxes.  
-    inds = np.where(mask > 0)
-    mod_maggies = 10**(0-grid.sed[...,inds]/2.5)
-    obs_maggies = 10**(0-obs[inds]/2.5)
-    obs_ivar = (obs_maggies*err[inds]/1.086)**(-2)
-
-    #best scale for these parameters
-    mdust = np.squeeze(( (mod_maggies*obs_maggies*obs_ivar).sum(axis=-1) ) /
-                       ( ( (mod_maggies**2.0)*obs_ivar ).sum(axis=-1) ))
-    lbol = grid.lbol*mdust
-        
-    #probability with dimensional juggling to get the broadcasting right
-    chi2 =  (( (mdust*mod_maggies.T).T - obs_maggies)**2)*obs_ivar
-    #print(ascale,chi2.sum())
-    lnprob = -0.5*chi2.sum(axis=-1)
-    #delta_mag = ( sed-2.5*np.log10(ascale) ) - obs
-        
-    return lnprob, lbol, mdust
-
+#######################
 ############### MAIN ####################
+#######################
 
 ##### Load the filters and the DL07 model grid ########
 filterlist = observate.loadFilters(fnamelist)
-dl07 = dustmodel.DraineLi()
+dl07 = models.DraineLi()
 
 ##### Set parameter ranges for priors #########
 par_names = ['UMIN','UMAX','GAMMA','QPAH']
-par_range = np.array([dl07.parRange('UMIN'),
-                      (100.0,dl07.parRange('UMAX')[1]),
-                      (0.00,0.5),
-                      dl07.parRange('QPAH')]
-    )
+par_range = np.array([[0.1,25],dl07.parRange(['UMAX'],inds=dl07.pdr_inds)[0],
+                      [0.00,0.5],
+                      dl07.parRange(['QPAH'])[0]])
 #par_range[0,:] = np.log10(par_range[0,:])
 par_range[1,:] = np.log10(par_range[1,:])
 npar = len(par_names)
 
 ###### initialize grid #############
-ngrid=1e3
+ngrid = 1e4
 theta = np.zeros([ngrid,npar])
 for j in xrange(npar) :
     theta[:,j] = np.random.uniform(par_range[j,0],par_range[j,1],ngrid)
 
-dustgrid=modelgrid.ModelGrid()
-dustgrid.setParameters(theta,par_names)
-dustgrid.generateSEDs(dl07,filterlist,wave_min=15e4,wave_max=1e7)
+theta[:,1]=10**theta[:,1]
 
-#raise ValueError('debug')
+dustgrid = models.ModelGrid()
+dustgrid.setPars(theta,par_names)
+dustgrid.generateSEDs(dl07,filterlist,wave_min=wave_min,wave_max=wave_max)
+ubar = dl07.ubar(dustgrid.pars['UMIN'],dustgrid.pars['UMAX'],dustgrid.pars['GAMMA'])
 
 ##### read the images and errors
 
@@ -109,17 +86,18 @@ data_mag = np.where(data_mag != 0.0, data_mag-dm, 0.0)
 nx, ny = data_mag.shape[0], data_mag.shape[1]
 
 ##### set up output
+outparnames=['LDUST','MDUST','UBAR']+par_names
 percentiles = np.array([0.16,0.5,0.84]) #output percentiles
-noutpar=npar+3 #the ndim + mdust, ldust, ubar
-parval = np.zeros([nx,ny,noutpar,3]) 
+noutpar=len(outparnames) #the ndim + mdust, ldust, ubar
+parval = np.zeros([nx,ny,noutpar,4]) 
 delta_best = np.zeros([nx,ny])-99
 max_lnprob = np.zeros([nx,ny])-99
 
 ####### Loop over pixels #######
-#should change the loop to prefilter bad pixels
+#prefilter bad pixels
 g = np.where(data_mag < 0,1,0)
 g = np.where(np.isfinite(data_mag),g,0)
-goodpix = np.where(g.sum(2) == len(imnamelist)) #restrict to pixels with at least 5 bands
+goodpix = np.where(g.sum(2) == len(imnamelist)) #restrict to pixels with at least 4 bands
 
 for ipix in xrange(goodpix[0].shape[0]):
     start = time.time()
@@ -129,30 +107,33 @@ for ipix in xrange(goodpix[0].shape[0]):
     err = data_magerr[iy,ix,:]
     mask = np.where(np.logical_and( (obs < 0), np.isfinite(obs) ), 1, 0)
 
-    lnprob , ltir, dustm = lnprob_grid(dustgrid, obs, err, mask)
+    lnprob , ltir, dustm = statutils.lnprob_grid(dustgrid, obs, err, mask)
 
     #output
-    ubar = dl07.ubar(dustgrid.pars['UMIN'],dustgrid.pars['UMAX'],dustgrid.pars['GAMMA'])
-    max_lnprob[ix,iy] = np.max(lnprob)
-    allpars = np.vstack([ltir,dustm,ubar,dustgrid.pars['UMIN'],dustgrid.pars['UMAX'],
-                       dustgrid.pars['GAMMA'],dustgrid.pars['QPAH']])
-    outparnames=['LDUST','MDUST','UBAR']+par_names
+    ind_isnum=np.isfinite(lnprob)
+    lnprob_isnum=lnprob[ind_isnum]
+    max_lnprob[iy,ix] = np.max(lnprob[ind_isnum])
+
+    allpars = np.vstack([ltir, dustm, ubar, dustgrid.pars['UMIN'], dustgrid.pars['UMAX'],
+                       dustgrid.pars['GAMMA'], dustgrid.pars['QPAH']])
 
     #get the percentiles of the 1d marginalized posterior distribution
     for ipar in xrange(len(outparnames)):
-        par = np.sort(allpars[ipar,:])
+        
+        par = np.squeeze(allpars[ipar,:])
+        par= par[ind_isnum]
         order = np.argsort(par)
-        cdf = np.cumsum(np.exp(lnprob[order])) / np.sum(np.exp(lnprob))
+        cdf = np.cumsum(np.exp(lnprob_isnum[order])) / np.sum(np.exp(lnprob_isnum))
         ind_ptiles= np.searchsorted(cdf,percentiles)
-        parval[ix,iy,ipar,:] = par[order[ind_ptiles]]
+        ind_max=np.argmax(lnprob_isnum)
+        parval[iy,ix,ipar,:-1] = par[order[ind_ptiles]]
+        parval[iy,ix,ipar,-1] = par[ind_max]
 
-    if ipix % 1 == 0:
+    if ipix == 100:
+        raise ValueError('debug')
         pass
         #plot and try to output the full sampler
                 #pass
-    if ipix == 20:
-        pass
-        #raise ValueError("Stop at ipix %s" %ipix)
 
 #write out the parval images
 for i in xrange(len(outparnames)):
@@ -160,5 +141,9 @@ for i in xrange(len(outparnames)):
     for j in xrange(3):
         outfile= 'results/%s_p%4.2f.fits' % (outparnames[i],percentiles[j]) 
         pyfits.writeto(outfile,parval[:,:,i,j],header=header,clobber=True)
+    outfile= 'results/%s_bestfit.fits' % (outparnames[i]) 
+    pyfits.writeto(outfile,parval[:,:,i,-1],header=header,clobber=True)
+outfile= 'results/CHIBEST.fits' 
+pyfits.writeto(outfile,max_lnprob*(-2),header=header,clobber=True)
 
-
+print('Done in %f seconds' %time.time()-start)
