@@ -124,12 +124,13 @@ for ipix in xrange(goodpix[0].shape[0]):
         par= par[ind_isnum]
         order = np.argsort(par)
         cdf = np.cumsum(np.exp(lnprob_isnum[order])) / np.sum(np.exp(lnprob_isnum))
-        ind_ptiles= np.searchsorted(cdf,percentiles)
+        ind_ptiles= np.searchsorted(cdf,percentiles) 
         ind_max=np.argmax(lnprob_isnum)
-        parval[iy,ix,ipar,:-1] = par[order[ind_ptiles]]
+        parval[iy,ix,ipar,:-1] = (par[order[ind_ptiles-1]] +
+                                  par[order[ind_ptiles]])/2.0 #almost right.  should interpolate between ind and ind-1
         parval[iy,ix,ipar,-1] = par[ind_max]
 
-    if ipix%100 is 0 :
+    if ipix%100 == 0 :
         #    do stuff for every 100th pixel
         pass
 

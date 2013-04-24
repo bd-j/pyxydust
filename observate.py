@@ -54,7 +54,7 @@ class Filter(object):
         else:
             self.nick=nick
 
-        self.filename = os.getenv('KCORRECT_DIR')+'/data/filters/'+kname+'.par'
+        self.filename = os.getenv('pyxydust')+'/data/filters/'+kname+'.par'
         if type( self.filename ) == type( '' ):
             if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file does not exist!' )
             self.loadKFilter(self.filename)
