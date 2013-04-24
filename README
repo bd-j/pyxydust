@@ -1,6 +1,6 @@
 pyxydust: 
 
-python code for fitting astrophysical dust emission models (to image pixels)
+my first python (and OO) code, for fitting astrophysical dust emission models (to image pixels)
 
 with inspiration from 
  k_correct
@@ -9,8 +9,8 @@ with inspiration from
 and relying heavily on the Draine & Li 2007 dust models
 as well as emcee
 
+The MCMC version is slow and out of date
 
-This code is very slow currently. 
 
 There is no warranty
 
