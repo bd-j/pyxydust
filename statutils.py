@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 
 
 #####
@@ -26,14 +26,17 @@ def lnprob_grid(grid, obs, err, mask):
     #clean NaNs
     
     
-    return lnprob, lbol, mdust
+    return lnprob, lbol, mdust, delta_mag
 
 
 
-def cdf(par,lnprob,percentiles):
+def cdf(par,lnprob,percentiles,save=False,plot=False):
     order = np.argsort(par)
     cdf = np.cumsum(np.exp(lnprob[order])) / np.sum(np.exp(lnprob))
     ind_ptiles= np.searchsorted(cdf,percentiles)
+    ind_max=np.argmax(lnprob_isnum)
 
+
+    return np.concatenate(par[order[ind_ptiles]],par[ind_max])
 
 

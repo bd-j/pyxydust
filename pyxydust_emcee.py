@@ -12,7 +12,7 @@ import pyfits
 import emcee
 
 import observate
-import dustmodel
+import models
 import utils
 
 import matplotlib.pyplot as pl
@@ -155,7 +155,7 @@ def lnprob(theta, obs, err, mask):
 
 ##### load the filters and the DL07 model grid
 filterlist=observate.loadFilters(fnamelist)
-dl07=dustmodel.DraineLi()
+dl07=models.DraineLi()
 
 ##### parameter ranges for priors
 par_names = ['Umin','Umax','gamma','Qpah']
