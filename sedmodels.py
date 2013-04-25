@@ -55,7 +55,7 @@ class ModelGrid(object):
 
         if keepspec : self.spectra=spec
 
-    def parNames(self):
+    def par_names(self):
         return self.pars.dtype.names
 
     def parRange(self, parname, inds=None):
@@ -69,10 +69,10 @@ class ModelGrid(object):
         pass
 
     def setPars(self, pars,parnames):
-        self.pars = self.arrayToStruct(pars,parnames)
+        self.pars = self.structure_array(pars,parnames)
         self.ngrid = self.pars.shape[0]
 
-    def arrayToStruct(self, values,fieldnames, types=['<f8']):
+    def structure_array(self, values,fieldnames, types=['<f8']):
         """turn a numpy array of floats into a structurd array. fieldnames can be a list or
         string array of parameter names with length nfield.
         Assumes pars is a numpy array of shape (nobj,nfield)
@@ -112,7 +112,7 @@ class SpecLibrary(ModelGrid):
     def __init__(self):
         pass
         
-    def interpolateTo(self, target_points, parnames=None, itype='dt',subinds=None ):
+    def interpolate_to_pars(self, target_points, parnames=None, itype='dt',subinds=None ):
         """Method to obtain the model spectrum for a given set of parameter values via
         interpolation of the model grid. The interpolation weights are determined
         from barycenters of a Delaunay triangulation or nLinear interpolation.
@@ -199,7 +199,7 @@ class DraineLi(SpecLibrary):
     def __init__(self,modfile=None):
         if modfile is not(None) :
             self.model_file=modfile
-        self.readFitsModelLibrary(self.model_file)
+        self.read_from_fits_library(self.model_file)
 
 
     def spectraFromPars(self,parstruct):
@@ -220,11 +220,11 @@ class DraineLi(SpecLibrary):
         if False in [umin.shape[0] == umax.shape[0],umin.shape[0] == qpah.shape[0]] :
             raise ValueError("DraineLi.generateSpectrum: parameter array sizes do not match")
         
-        delta_spec = self.interpolateTo( np.array([umin,qpah]).T,
+        delta_spec = self.interpolate_to_pars( np.array([umin,qpah]).T,
                                          parnames = ['UMIN','QPAH'], subinds = self.delta_inds )
         pdr_spec = 0
         if np.any(gamma > 0):
-            pdr_spec = self.interpolateTo( np.array([umin,umax,qpah]).T,
+            pdr_spec = self.interpolate_to_pars( np.array([umin,umax,qpah]).T,
                                            parnames = ['UMIN','UMAX','QPAH'], subinds = self.pdr_inds )
         return (mdust*(delta_spec.T*(1.0-gamma)+pdr_spec.T*gamma)).T
                 
@@ -234,7 +234,7 @@ class DraineLi(SpecLibrary):
             raise ValueError('only alpha=2 is currently allowed')
         return (1-gamma)*(umin)+gamma*np.log(umax/umin)/(1/umin-1/umax)
 
-    def readFitsModelLibrary(self,filename,grain='MW3.1'):
+    def read_from_fits_library(self,filename,grain='MW3.1'):
         """Read in the dust SED library of Draine & Li 2007, stored as a
         fits binary table with spectral units of erg/s/cm^2/AA/M_sun of dust
         at a distance of 10pc. Produce index arrays to access delta-function
@@ -253,21 +253,55 @@ class DraineLi(SpecLibrary):
         for pname in parnames:
             lib_pars.append(np.squeeze(fits[1].data[pname]))
         lib_pars = np.array(lib_pars).transpose() #(nmod, ndim)
-        self.pars=self.arrayToStruct(lib_pars,parnames,types=['<f8','<f8','<f8','S10'])
+        self.pars=self.structure_array(lib_pars,parnames,types=['<f8','<f8','<f8','S10'])
         self.spectra=fits[1].data['F_LAMBDA'] #(nmod,nwave)
         fits.close()
+
         #record the indices of models corresponding to delt-functions and 'pdr' U distributions
         self.delta_inds = np.squeeze(np.array(np.where(np.logical_and(
             (self.pars['UMAX'] == self.pars['UMIN']), (self.pars['GRAIN'] == grain) ) )))
         self.pdr_inds = np.squeeze(np.array(np.where(np.logical_and(
             (self.pars['UMAX'] > self.pars['UMIN']),(self.pars['GRAIN'] == grain) ) )))
 
-    def libraryFromDustEM():
+    def library_from_dustEM():
         """if python bindings to DustEM ever happen, you could call it from here
         to fill the model recarray with a dnser grid than Draine provides
         """
         pass
 
+class BaSeL():
+    
+    specdir = os.getenv('SPS_HOME')+'SPECTRA/BaSeL3.1/'
+
+    def __init__(self):
+        self.pars = None
+        self.spectra = None
+        pass
+
+
+    def read_all_from_fits(self):
+
+        flist = glob.glob(self.specdir+'wlbc*.fits')
+        if len(flist) is 0 : raise NameError('nothing returned for ls ',self.specdir,'wlbc*.fits')
+        self.Z_list=[]
+        self.Z_legend = []
+        for i,f in enumerate(flist):
+            Z=f.split('_')
+            self.Z_legend.append(Z)
+            self.Z_list.append(float(Z))
+            self.load_one_isoc(Z)
+        self.Z_list=np.array(self.Z_list)
+ 
+        pass
+
+    def read_one_from_fits(self,Z):
+                if type(Z) is float : Z = '%6.4f' % Z
+        filename = glob.glob(specdir+'basel*'+Z+'*.fits')
+
+        pass
+
+    def generate_spectrum(self)
+        
 
 class ModifiedBB(SpecLibrary):
     """ModifiedBB:: Class to work with modified blackbodies a.k.a. greybodies
@@ -282,7 +316,7 @@ class ModifiedBB(SpecLibrary):
         return self.generateSpectrum(pars['T_DUST'], pars['BETA'], pars['M_DUST'] )
 
         
-    def generateSpectrum(self, T_dust, beta, M_dust, kappa_lambda0=(1.92, 350e4)):
+    def generate_spectrum(self, T_dust, beta, M_dust, kappa_lambda0=(1.92, 350e4)):
         """Method to return the spectrum given a list or array of temperatures,
         beta, and dust masses.  Also, the normalization of the emissivity curve can
         be given as a tuple in units of cm^2/g and AA, default = (1.92, 350e4).
@@ -302,8 +336,8 @@ class ModifiedBB(SpecLibrary):
         #return B_lambda in erg/s/AA
         return 2*hplank*(c_cgs**2)/(wave**5) * 1/(np.exp( hplanck*c_cgs/(kboltz*T) )-1) * 1e8
         
-class BaSeL():
-    pass
+
+        
 
 ############ A method for determining nLinear interpolation weights.  unfinished ########
 
