@@ -10,10 +10,11 @@
 #       -- Test the broadening functions for accuracy and speed.
 #       -- Add some redshifting methods/classes
 
-import pyfits
+
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import pyfits
 import yanny
 
 ##Load useful reference spectra######
@@ -56,7 +57,7 @@ class Filter(object):
 
         self.filename = os.getenv('pyxydust')+'/data/filters/'+kname+'.par'
         if type( self.filename ) == type( '' ):
-            if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file does not exist!' )
+            if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file %s does not exist!' %filename )
             self.loadKFilter(self.filename)
 
     def loadKFilter(self,filename):
@@ -162,7 +163,7 @@ class Filter(object):
 
 ###Useful utilities#####
 
-def loadFilters(filternamelist):
+def load_filters(filternamelist):
     """Given a list of filter names, this method returns a list of Filter objects"""
     filterlist=[]
     for f in filternamelist:
@@ -179,10 +180,14 @@ def getSED(sourcewave,sourceflux,filterlist):
     sed = np.zeros(sedshape)
     for i,f in enumerate(filterlist):
         sed[:,i]=f.ABMag(sourcewave,sourceflux)
-
-
-
     return np.squeeze(sed)
+
+def filter_dict(self,filterlist):
+    fdict = {}
+    for i,f in numerate(filterlist):
+        fdict[f.nick] = i
+    return fdict
+
 
 ###Routines for spectra######
 
