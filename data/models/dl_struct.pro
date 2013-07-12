@@ -87,8 +87,6 @@ for i=0,nf-1 do begin
   nu=!lightspeed/w
   flambda=alog10(nudpdnu/w)+K[i]+factor ;erg/s/AA/cm^2/M_sun of dust at 10pc distance
 
-stop
-
   model[i].wave=reverse(w)
   model[i].f_lambda=reverse(10^flambda)
 

@@ -19,7 +19,7 @@ import yanny
 
 ##Load useful reference spectra######
 lightspeed=2.998E18 #AA/s
-vega_file=os.getenv('pyxydust')+'/data/alpha_lyr_stis_005.fits'
+vega_file=os.getenv('hrdspy')+'/data/alpha_lyr_stis_005.fits'
 #this file should be in AA and erg/s/cm^2/AA
 if os.path.isfile( vega_file ):
     fits = pyfits.open( vega_file )
@@ -28,7 +28,7 @@ if os.path.isfile( vega_file ):
 else:
     raise ValueError('Could not find Vega spectrum at %s',vega_file)
 rat = (1.0/(3600*180/np.pi*10))**2.0 # conversion to d=10 pc from 1 AU
-solar_file = os.getenv('pyxydust')+'/data/sun_kurucz93.fits'
+solar_file = os.getenv('hrdspy')+'/data/sun_kurucz93.fits'
 #this file should be in AA and erg/s/cm^2/AA at 1AU
 if os.path.isfile( solar_file ):
     fits = pyfits.open( solar_file )
@@ -55,9 +55,9 @@ class Filter(object):
         else:
             self.nick=nick
 
-        self.filename = os.getenv('pyxydust')+'/data/filters/'+kname+'.par'
+        self.filename = os.getenv('hrdspy')+'/data/filters/'+kname+'.par'
         if type( self.filename ) == type( '' ):
-            if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file %s does not exist!' %filename )
+            if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file %s does not exist!' %self.filename )
             self.loadKFilter(self.filename)
 
     def loadKFilter(self,filename):
@@ -167,6 +167,7 @@ def load_filters(filternamelist):
     """Given a list of filter names, this method returns a list of Filter objects"""
     filterlist=[]
     for f in filternamelist:
+        print(f)
         filterlist.append(Filter(f))
     return filterlist
 
@@ -182,12 +183,11 @@ def getSED(sourcewave,sourceflux,filterlist):
         sed[:,i]=f.ABMag(sourcewave,sourceflux)
     return np.squeeze(sed)
 
-def filter_dict(self,filterlist):
+def filter_dict(filterlist):
     fdict = {}
-    for i,f in numerate(filterlist):
+    for i,f in enumerate(filterlist):
         fdict[f.nick] = i
     return fdict
-
 
 ###Routines for spectra######
 
@@ -195,7 +195,6 @@ def Lbol(wave,spec,wave_min=90,wave_max = 1e6):
     """assumes wavelength varies along last axis of spec"""
     inds=np.where(np.logical_and(wave < wave_max, wave >= wave_min))
     return np.trapz(spec[...,inds[0]],wave[inds])
-
 
 
 def air2vac(wave):
