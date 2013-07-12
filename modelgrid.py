@@ -3,7 +3,7 @@ import pyfits
 import scipy.spatial
 import astropy.constants as constants
 
-#import observate
+import observate
 
 lsun = constants.L_sun.cgs.value
 pc = constants.pc.cgs.value
@@ -25,7 +25,7 @@ class ModelLibrary(object):
         self.ngrid = self.pars.shape[0]
 
     def add_par(self,value,name, dtype='<f8'):
-        self.pars = self.join_struct_arrays( [self.pars, self.structure_array(value, name, dtype = dtype)] )
+        self.pars = self.join_struct_arrays( [self.pars, self.structure_array(value, [name], types = [dtype])] )
         pass
 
     def par_names(self):
@@ -113,7 +113,8 @@ class ModelLibrary(object):
             target_points - array of shape (ntarg,ndim)
             output inds and weights - arrays of shape (npts,ndim+1)
         """
-        
+
+        #should find a way to sore the triangulation and only regenerate if necessary
         ndim = target_points.shape[-1]
         #delaunay triangulate and find the encompassing (hyper)triangle(s) for the desired point
         dtri = scipy.spatial.Delaunay(model_points)
@@ -191,7 +192,7 @@ class SpecLibrary(ModelLibrary):
 	#split big model grids to avoid memory constraints
 	i=0
         while (i*maxmod <= ngrid):
-            print(i)
+            print('generateSEDs: chunk {0}'.format(i+1))
 	    s1, s2 = (i)*maxmod, np.min([(i+1)*maxmod-1,ngrid])
 	    spec = self.spectra_from_pars(pars[s1:s2])
             if attenuator is not None:

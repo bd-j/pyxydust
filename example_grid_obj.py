@@ -15,7 +15,7 @@ import pyxydust
 ## user inputs are stored in a dictionary, here 'rp', which is passed to the fitter
 ## on initialization.  
 
-rp = {'outname': 'results/NGC6822', 'dist': 0.490, 'ngrid': 5e4,
+rp = {'outname': 'results/test/NGC6822', 'dist': 0.490, 'ngrid': 5e4,
       'wave_min':30e4, 'wave_max': 1e7, #AA, range for determination of LDUST
       'percentiles' : np.array([0.025,0.5,0.975]) #output percentiles of the cdf for each parameter
       }
@@ -33,8 +33,9 @@ rp['fnamelist'] = ['spitzer_mips_24','herschel_pacs_70','herschel_pacs_100',
 ### Image File Names ###
 ## images should be convolved to a common resolution, pixel matched,
 ## and in units of Jy/pixel. Otherwise modify utils.load_image_cube
-## or add -2.5*log(conversion) to the magnitude arrays
-## if the error image can't be found the fudge values are used 
+## or add -2.5*log(conversion) to the magnitude arrays.
+## If the error image can't be found the fudge values are used. The error
+## images should include any systematics, etc.
 
 ## note that images of size 1 x N_obj can be used to fit the SEDs of an arbitrary
 ## set of objects, where each object is a 'pixel'
@@ -64,14 +65,12 @@ fitter.load_data()
 #print(fitter.params.keys()) #show the available model input parameters
 #fitter.params['QPAH']['min'] = some_number.  #make sure to use log10 if params['PAR']['type'] == 'log'
 #fitter.params['GAMMA']['max'] = 1 #allow GAMMA to go up to one
-#fitter.params['GAMMA']['type'] = 'log' #make the prior uniform in the log (from 0.01 to 1)
-#fitter.params['GAMMA']['min'] = -2
-#fitter.params['GAMMA']['max'] = 0
+#fitter.params['GAMMA'] = {'min':-4, 'max':0, 'type':'log'} #make the prior uniform in the log (from 1e-4 to 1)
 fitter.params['UMAX']['min'] = 6 #require UMax = 1e6 always ('UMAX'['max'] is 1e6 also)
 fitter.params['UMAX']['min'] = 5
 
 #generate the model grid with the given prior distributions
-fitter.initialize_grid()
+fitter.initialize_grid(params = None)
 
 ## Set up for predicting the emission in any band
 ## Do this after running fitter.initialize_grid() but before

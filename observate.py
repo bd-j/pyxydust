@@ -19,7 +19,7 @@ import yanny
 
 ##Load useful reference spectra######
 lightspeed=2.998E18 #AA/s
-vega_file=os.getenv('hrdspy')+'/data/alpha_lyr_stis_005.fits'
+vega_file=os.getenv('pyxydust')+'/data/alpha_lyr_stis_005.fits'
 #this file should be in AA and erg/s/cm^2/AA
 if os.path.isfile( vega_file ):
     fits = pyfits.open( vega_file )
@@ -28,7 +28,7 @@ if os.path.isfile( vega_file ):
 else:
     raise ValueError('Could not find Vega spectrum at %s',vega_file)
 rat = (1.0/(3600*180/np.pi*10))**2.0 # conversion to d=10 pc from 1 AU
-solar_file = os.getenv('hrdspy')+'/data/sun_kurucz93.fits'
+solar_file = os.getenv('pyxydust')+'/data/sun_kurucz93.fits'
 #this file should be in AA and erg/s/cm^2/AA at 1AU
 if os.path.isfile( solar_file ):
     fits = pyfits.open( solar_file )
@@ -55,7 +55,7 @@ class Filter(object):
         else:
             self.nick=nick
 
-        self.filename = os.getenv('hrdspy')+'/data/filters/'+kname+'.par'
+        self.filename = os.getenv('pyxydust')+'/data/filters/'+kname+'.par'
         if type( self.filename ) == type( '' ):
             if not os.path.isfile( self.filename ): raise ValueError( 'Filter transmission file %s does not exist!' %self.filename )
             self.loadKFilter(self.filename)
@@ -119,7 +119,7 @@ class Filter(object):
         self.ab_counts = self.objCounts( self.wavelength,self.ab_gnu*lightspeed/(self.wavelength**2) )
         self.vega_counts = self.objCounts(vega[:,0],vega[:,1]) 
         self.ab_to_vega = -2.5*np.log10(self.ab_counts/self.vega_counts)
-        self.solar_mag = self.ABMag(solar[:,0],solar[:,1])
+        self.solar_ab_mag = self.ABMag(solar[:,0],solar[:,1])
 
     def display(self):
         """display
@@ -148,7 +148,7 @@ class Filter(object):
             #if  np.isinf(counts).any() : print(self.name, "Warn for inf value")
             return np.squeeze(counts)
 	else:
-            return 0.
+            return float('NaN')
 
     def ABMag(self,sourcewave,sourceflux,sourceflux_unc=0):
         """ABMag: Convolve source spectrum  with filter and return the AB magnitude
@@ -167,7 +167,7 @@ def load_filters(filternamelist):
     """Given a list of filter names, this method returns a list of Filter objects"""
     filterlist=[]
     for f in filternamelist:
-        print(f)
+        #print(f)
         filterlist.append(Filter(f))
     return filterlist
 
@@ -237,8 +237,8 @@ def selftest():
 
     filterlist=loadFilters(filternames)
     for i in range(len(filterlist)):
-        print(filterlist[i].wave_effective, filterlist[i].solar_mag, filterlist[i].ab_to_vega)
+        print(filterlist[i].wave_effective, filterlist[i].solar_ab_mag, filterlist[i].ab_to_vega)
         assert abs(filterlist[i].wave_effective-weff_kcorr[i]) < weff_kcorr[i]*0.01
-        assert abs(filterlist[i].solar_mag-msun_kcorr[i]) < 0.05
+        assert abs(filterlist[i].solar_ab_mag-msun_kcorr[i]) < 0.05
         #assert abs(filterlist[i].ab_to_vega+ab2vega_kcorr[i]) < 0.05
 

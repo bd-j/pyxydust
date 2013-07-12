@@ -26,11 +26,11 @@ class DraineLi(SpecLibrary):
 
 
     def spectra_from_pars(self,parstruct):
-        """ wrapper on generateSpectrum that parses a pars structured array for the required parameters
+        """ wrapper on generate_spectrum that parses a pars structured array for the required parameters
         """
         alpha = 2
         mdust = 1
-        return self.generate_pectrum(parstruct['UMIN'], parstruct['UMAX'],
+        return self.generate_spectrum(parstruct['UMIN'], parstruct['UMAX'],
                                      parstruct['GAMMA'], parstruct['QPAH'],alpha,mdust=mdust)
 
     def generate_spectrum(self,umin,umax,gamma,qpah,alpha,mdust = 1):
@@ -46,11 +46,13 @@ class DraineLi(SpecLibrary):
         
         delta_spec = self.interpolate_to_pars( np.array([umin,qpah]).T,
                                          parnames = ['UMIN','QPAH'], subinds = self.delta_inds )
-        pdr_spec = 0
+
+        pdr_spec = np.zeros(self.wavelength.shape[0])
         if np.any(gamma > 0):
             pdr_spec = self.interpolate_to_pars( np.array([umin,umax,qpah]).T,
                                            parnames = ['UMIN','UMAX','QPAH'], subinds = self.pdr_inds )
-        return (mdust*(delta_spec.T*(1.0-gamma)+pdr_spec.T*gamma)).T
+        #print(pdr_spec.shape, delta_spec.shape)
+        return (mdust*((1.0-gamma)*delta_spec.T+gamma*pdr_spec.T)).T
                 
     
     def ubar(self,umin,umax,gamma,alpha=2):

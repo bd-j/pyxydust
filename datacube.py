@@ -3,7 +3,7 @@ import numpy as np
 import pyfits
 import os
 
-def loadImageCube(imnamelist = None,errnamelist = None,fudge_err= None):
+def load_image_cube(imnamelist = None,errnamelist = None,fudge_err= None, **kwargs):
     if imnamelist is None : raise ValueError('No image names specified!!!')
 
     hdr = pyfits.getheader(imnamelist[0])
