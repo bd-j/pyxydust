@@ -4,7 +4,6 @@ import numpy as np
 #####
 ##### function to obtain likelihood ####
 #####
-#def lnprob(theta,obs_maggies,obs_ivar,mask):
 
 def lnprob_grid(grid, obs, err, mask):
     #linearize fluxes.  
@@ -29,8 +28,8 @@ def lnprob_grid(grid, obs, err, mask):
     return lnprob, lbol, mdust, delta_mag
 
 
-
-def cdf(par,lnprob,percentiles,save=False,plot=False):
+#not working yet....
+def cdf_moment(par,lnprob,percentiles,save=False,plot=False):
     order = np.argsort(par)
     cdf = np.cumsum(np.exp(lnprob[order])) / np.sum(np.exp(lnprob))
     ind_ptiles= np.searchsorted(cdf,percentiles)

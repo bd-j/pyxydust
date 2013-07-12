@@ -1,150 +1,120 @@
-#pyxydust: 
-#  1) Fit each pixel in an image with DL07 dust models
-#  2) Return images of percentiles of the resulting
-#     marginalized posterior probability for each model
-#     parameter.  Also, plot some joint distributions for
-#     selected pixels.
-
-#import numpy as np
-import numpy as np
 import os, time
+import numpy as np
 import pyfits
-
-import observate
-import sedmodels
-import datacube
+import dustmodel
 import statutils
+import datacube
 
-import matplotlib.pyplot as pl
-#from dustplot import *
 
-############### USER INPUTS ###########
+class Pyxydust(object):
 
-outname = 'NGC6822'
-ngrid = 5e4
-percentiles = np.array([0.025,0.5,0.975]) #output percentiles
+    def __init__(self, rp):
+        self.rp = rp
+        self.set_default_params()
+        self.load_models()
 
-######## Filter info ##################
-#list the filters you want to use (in the same order
-#as the images below).  These are based on k_correct names
+    def load_models(self):
+        self.dl07 = dustgrid.DraineLi()  #Draine and Li Basis
+        self.dustgrid = dustgrid.SpecLibrary() #object to hold the model grid
+        self.filterlist = observate.load_filters(self.rp['fnamelist']) #filter objects
+        
+    def load_data(self):
+        self.data_mag, self.data_magerr, self.rp['data_header'] = datacube.load_image_cube(**self.rp)
+        dm = 5.0*np.log10(self.rp['dist'])+25
+        self.data_mag = np.where(self.data_mag != 0.0, self.data_mag-dm, 0.0)
+        self.nx, self.ny = self.data_mag.shape[0], self.data_mag.shape[1]
 
-wave_min, wave_max = 15e4, 1e7 #AA, range for determination of L_TIR
-fnamelist = ['spitzer_mips_24','herschel_pacs_70','herschel_pacs_100',
-             'herschel_pacs_160','herschel_spire_250']
-nfilt = len(fnamelist)
+        gg = np.where((self.data_mag < 0) & np.isfinite(self.data_mag),1,0)
+        self.goodpix = np.where(gg.sum(axis = 2) == len(self.rp['imnamelist'])) #restrict to detections in all bands
 
-######## Image file names ##############
-#images should be convolved to a common resolution, pixel matched,
-#and in units of Jy/pixel. Otherwise modify utils.loadImageCube
-#or add -2.5*log(conversion) to the magnitude arrays
+    def write_output(self):
 
-dist = 0.490 #Mpc
-imnamelist = ['mips_24.6arcsec.Jypix','pacs_70.6arcsec.Jypix',
-              'pacs_100.6arcsec.Jypix','pacs_160.6arcsec.Jypix',
-              'spire_250.6arcsec.Jypix']
-errnamelist = ['x','pacs_70.6arcsec.sig','pacs_100.6arcsec.sig',
-               'pacs_160.6arcsec.sig','x']
-fudge_err = [0.1,0.1,0.1,0.1,0.15]
+        header = self.rp['data_header']
 
-path = os.getenv('pyxydust')+'/imdata/NGC6822'
-imnamelist = ['%s_conv250_%s.fits' % (path,name) for name in imnamelist]
-errnamelist = ['%s_%s.fits' % (path,name) for name in errnamelist]
+        outfile= '{outname}_CHIBEST.fits'.format(**self.rp)
+        pyfits.writeto(outfile,self.max_lnprob*(-2),header=header,clobber=True)
 
-############### END USER INPUT ##########
+        for i, parn in enumerate(self.outparnames):
+            #    header.set('BUNIT',unit[i])
+            outfile= '{0}_{1}_bestfit.fits'.format(self.rp['outname'],parn)
+            pyfits.writeto(outfile,self.parval[parn][:,:,-1],header=header,clobber=True)
+            for j, percent in enumerate(self.rp['precentiles']):
+                outfile= '{0}_{1}_p{2:5.3f}.fits'.format(self.rp['outname'],parn,percent) 
+                pyfits.writeto(outfile,self.parval[parn][:,:,j],header=header,clobber=True)
 
-############### MAIN ####################
 
-######## read the images and errors ######
-data_mag, data_magerr, header = datacube.loadImageCube(imnamelist,errnamelist,fudge_err)
-dm = 5.0*np.log10(dist)+25
-data_mag = np.where(data_mag != 0.0, data_mag-dm, 0.0)
-nx, ny = data_mag.shape[0], data_mag.shape[1]
+class PyxydustGrid(Pyxydust):
 
-#### Load the filters and the DL07 model grid ####
-filterlist = observate.loadFilters(fnamelist)
-dl07 = sedmodels.DraineLi()
+    def initialize_grid(self):
+        theta = np.zeros([self.rp['ngrid'],npar])
+        for j, parn in enumerate(parnames) :
+            theta[:,j] = np.random.uniform(self.params[parn]['min'],self.params[parn]['max'],self.rp['ngrid'])
+            if self.params[parn]['type'] == 'log':
+                theta[:,j]=10**theta[:,j] #deal with uniform log priors
 
-#### Set parameter ranges for priors ####
-par_names = ['UMIN','UMAX','GAMMA','QPAH']
-par_range = np.array([[0.1,25],dl07.parRange(['UMAX'],inds=dl07.pdr_inds)[0],
-                      [0.00,0.5],
-                      dl07.parRange(['QPAH'])[0]])
-par_range[1,:] = np.log10(par_range[1,:]) #make the UMAX prior uniform in log.
-npar = len(par_names)
+        start = time.time()
+        self.dustgrid.set_pars(theta,parnames)
+        self.dustgrid.seds, self.dustgrid.lbol, tmp = self.dl07.generateSEDs(self.dustgrid.pars,self.filterlist,
+                                                                             wave_min=self.rp['wave_min'],
+                                                                             wave_max=self.rp['wave_max'])
+        ubar = dl07.ubar(dustgrid.pars['UMIN'],dustgrid.pars['UMAX'],dustgrid.pars['GAMMA'])
+        self.dustgrid.add_par(ubar,'UBAR')
+        duration=time.time()-start
+        print('Model Grid built in {0:.1f} seconds'.format(duration))
 
-######## initialize grid ################
-theta = np.zeros([ngrid,npar])
-for j in xrange(npar) :
-    theta[:,j] = np.random.uniform(par_range[j,0],par_range[j,1],ngrid)
-theta[:,1]=10**theta[:,1] #deal with uniform log prior in UMAX
+    def fit_image(self):
+        start = time.time()
+        for ipix in xrange(self.goodpix[0].shape[0]):
+            iy, ix  = self.goodpix[0][ipix], self.goodpix[1][ipix]
+            self.fit_pixel(ix,iy)
+        duration =  time.time()-start
+        print('Done all pixels in {0:.1f} seconds'.format(duration) )
 
-start = time.time()
-dustgrid = sedmodels.ModelGrid()
-dustgrid.setPars(theta,par_names)
-dustgrid.generateSEDs(dl07,filterlist,wave_min=wave_min,wave_max=wave_max)
-duration=time.time()-start
-print('Model Grid built in ',duration,' seconds')
+    def fit_pixel(self, store = True, show_cdf = False):
+        obs, err = self.data_mag[iy,ix,:], self.data_magerr[iy,ix,:]
+        mask = np.where((obs < 0) & np.isfinite(obs), 1, 0)
+    
+        lnprob , ltir, dustm, delta_mag = statutils.lnprob_grid(self.dustgrid, obs, err, mask)
+        ind_isnum = np.where(np.isfinite(lnprob))[0]
+        lnprob_isnum = lnprob[ind_isnum]
 
-ubar = dl07.ubar(dustgrid.pars['UMIN'],dustgrid.pars['UMAX'],dustgrid.pars['GAMMA'])
+        #this should all go to a storage method
+        self.max_lnprob[iy,ix] = np.max(lnprob_isnum)
+        self.delta_image[iy,ix,:] = delta_mag
+        for i, parn in enumerate(self.outparnames):
+            if parn == 'LDUST':
+                par = np.squeeze(ltir)[ind_isnum]
+            elif parn == 'MDUST':
+                par = np.squeeze(dustm)[ind_isnum]
+            else:
+                par = np.squeeze(self.dustgrid.pars[parn])[ind_isnum]
+                
+            order = np.argsort(par)
+            cdf = np.cumsum(np.exp(lnprob_isnum[order])) / np.sum(np.exp(lnprob_isnum))
+            ind_ptiles= np.searchsorted(cdf,self.rp['percentiles']) 
+            ind_max=np.argmax(lnprob_isnum)
+            self.parval[parn][iy,ix,:-1] = (par[order[ind_ptiles-1]] +par[order[ind_ptiles]])/2.0 # should linear interpolate instead of average.
+            self.parval[parn][iy,ix,-1] = par[ind_max]        
 
-######## set up output ###################
-outparnames=['LDUST','MDUST','UBAR']+par_names
-noutpar=len(outparnames) #the ndim + mdust, ldust, ubar
-parval = np.zeros([nx,ny,noutpar,4]) 
-delta_best = np.zeros([nx,ny])-99
-max_lnprob = np.zeros([nx,ny])-99
+    def setup_output(self):
+        self.max_lnprob = np.zeros([self.nx,self.ny])+float('NaN')
+        try:
+            self.outparnames = self.rp['outparnames']+['LDUST','MDUST']
+        except (KeyError):
+            self.outparnames = ['LDUST','MDUST']
+        self.parval ={}
+        for parn in self.outparnames:
+            self.parval[parn] = np.zeros([self.nx,self.ny,len(self.rp['percentiles'])+1])+float('NaN')
+        
+        if self.doresid is True:
+            self.delta_best = np.zeros([self.nx,self.ny,ln(self.filterlist)])+float('NaN')
 
-######## Loop over pixels ################
-#prefilter bad pixels
-g = np.where(data_mag < 0,1,0)
-g = np.where(np.isfinite(data_mag),g,0)
-goodpix = np.where(g.sum(2) == len(imnamelist)) #restrict to pixels with at least 4 bands
-
-start = time.time()
-
-for ipix in xrange(goodpix[0].shape[0]):
-
-    iy, ix  = goodpix[0][ipix], goodpix[1][ipix]
-    obs = data_mag[iy,ix,:]
-    err = data_magerr[iy,ix,:]
-    mask = np.where(np.logical_and( (obs < 0), np.isfinite(obs) ), 1, 0)
-
-    lnprob , ltir, dustm, delta_mag = statutils.lnprob_grid(dustgrid, obs, err, mask)
-    ind_isnum=np.isfinite(lnprob)
-    lnprob_isnum=lnprob[ind_isnum]
-
-    #output
-    max_lnprob[iy,ix] = np.max(lnprob_isnum)
-    allpars = np.vstack([ltir, dustm, ubar, dustgrid.pars['UMIN'], dustgrid.pars['UMAX'],
-                       dustgrid.pars['GAMMA'], dustgrid.pars['QPAH']])
-
-    #get the percentiles of the 1d marginalized posterior distribution
-    for ipar in xrange(len(outparnames)):
-        par = np.squeeze(allpars[ipar,:])
-        par= par[ind_isnum]
-        order = np.argsort(par)
-        cdf = np.cumsum(np.exp(lnprob_isnum[order])) / np.sum(np.exp(lnprob_isnum))
-        ind_ptiles= np.searchsorted(cdf,percentiles) 
-        ind_max=np.argmax(lnprob_isnum)
-        parval[iy,ix,ipar,:-1] = (par[order[ind_ptiles-1]] +
-                                  par[order[ind_ptiles]])/2.0 #almost right.  should interpolate between ind and ind-1
-        parval[iy,ix,ipar,-1] = par[ind_max]
-
-    if ipix%100 == 0 :
-        #    do stuff for every 100th pixel
+    def set_default_params(self):
+        #should be list of dicts or dict of lists?  no, dict of dicts!
+        qpahmax = self.dl07.par_range(['QPAH'], inds = [dl07.delta_inds])[0][1]
+        self.params = {}
+        self.params['UMIN'] = {'min': np.log10(0.1), 'max':np.log10(25), 'type':'log'}
+        self.params['UMAX'] = {'min': np.log10(1e4), 'max':1e6, 'type':'log'}
+        self.params['GAMMA'] = {'min': 1e-4, 'max':0, 'type':'log'}
+        self.params['QPAH'] = {'min': 0.47, 'max':qpahmax, 'type':'log'}
         pass
-
-#write out the parval images
-for i in xrange(len(outparnames)):
-    #    header.set('BUNIT',unit[i])
-    for j in xrange(3):
-        outfile= 'results/%s_%s_p%5.3f.fits' % (outname,outparnames[i],percentiles[j]) 
-        pyfits.writeto(outfile,parval[:,:,i,j],header=header,clobber=True)
-    outfile= 'results/%s_%s_bestfit.fits' % (outname,outparnames[i]) 
-    pyfits.writeto(outfile,parval[:,:,i,-1],header=header,clobber=True)
-outfile= 'results/%s_CHIBEST.fits' % outname
-pyfits.writeto(outfile,max_lnprob*(-2),header=header,clobber=True)
-duration =  time.time()-start
-print('Done in',duration,' seconds' )
-
-print(delta_mag.shape)
