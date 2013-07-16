@@ -1,6 +1,7 @@
 imdata/*
 results/*
 data/models/*
+data/filters/*
 *~
 *.pyc
 junk*
