@@ -5,7 +5,6 @@
 #     parameter.  Also, plot some joint distributions for
 #     selected pixels.
 
-
 import numpy as np
 import os, time
 import pyxydust
@@ -64,12 +63,13 @@ fitter.load_data()
 ## Change the allowed range of a given parameter from the default
 #print(fitter.params.keys()) #show the available model input parameters
 #fitter.params['QPAH']['min'] = some_number.  #make sure to use log10 if params['PAR']['type'] == 'log'
-#fitter.params['GAMMA']['max'] = 1 #allow GAMMA to go up to one
+#fitter.params['GAMMA']['max'] =  #allow GAMMA to go up to one
 #fitter.params['GAMMA'] = {'min':-4, 'max':0, 'type':'log'} #make the prior uniform in the log (from 1e-4 to 1)
 fitter.params['UMAX']['min'] = 6 #require UMax = 1e6 always ('UMAX'['max'] is 1e6 also)
 fitter.params['UMAX']['min'] = 5
 
 #generate the model grid with the given prior distributions
+#params can be a dictionary of input parameter descriptor dictionaries
 fitter.initialize_grid(params = None)
 
 ## Set up for predicting the emission in any band
@@ -82,7 +82,6 @@ fitter.initialize_grid(params = None)
 #fitter.rp['outparnames']+= [pred_filt[i].name() for i in len(pred_filt)]
 
 ## Cry Havoc!  actually fit each pixel
-#params can be a dictionary of input parameter descriptor dictionaries
 fitter.fit_image()
 
 ## Force the fit of a given single pixel.  

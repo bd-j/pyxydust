@@ -1,6 +1,7 @@
 import os, time
 import numpy as np
 import pyfits
+import matplotlib.pyplot as pl
 
 import observate
 import dustmodel
@@ -83,7 +84,7 @@ class Pyxydust(object):
                 pyfits.writeto(outfile,self.parval[parn][:,:,j],header=header,clobber=True)
         if self.doresid:
             for i, fname in enumerate(self.rp['fnamelist']):
-                outfile = '{0}_{1}.fits'.format(self.rp['outname'], fname)
+                outfile = '{0}_{1}_{2}.fits'.format(self.rp['outname'], fname,'bestfit_residual')
                 pyfits.writeto(outfile,self.delta_best[:,:,i],header = header, clobber = True)
 
 class PyxydustGrid(Pyxydust):
@@ -175,7 +176,7 @@ class PyxydustMCMC(Pyxydust):
 
         sampler = self.sample(obs_maggies, obs_ivar, mask)
 
-    def sample(self,obs_maggies, obs_ivar, mask)
+    def sample(self,obs_maggies, obs_ivar, mask):
         initial = self.initial_proposal()
 
         #get a sampler, burn it in, and reset
@@ -191,7 +192,7 @@ class PyxydustMCMC(Pyxydust):
 
     def initial_proposal(self):
         parnames = self.lnprob.lnprob_parnames
-        theta = np.zeros(len(parnames)])
+        theta = np.zeros(len(parnames))
         for j, parn in enumerate(parnames) :
             theta[:,j] = np.random.uniform(self.params[parn]['min'],self.params[parn]['max'])
         return theta
@@ -199,7 +200,7 @@ class PyxydustMCMC(Pyxydust):
 
     def lnprob(self, theta, obs_maggies, obs_ivar, mask):
         lnprob_parnames = ['UMIN', 'UMAX', 'GAMMA', 'QPAH', 'MDUST']
-        pardict = {lnprob_parnames theta} #ugh.  need quick dict or struct_array from list/array
+        #        pardict = {lnprob_parnames theta} #ugh.  need quick dict or struct_array from list/array
 
         #prior bounds check
         ptest=[]
@@ -288,5 +289,5 @@ class PyxydustMCMC(Pyxydust):
                     pl.xlabel(rp['outpar_names'][i],fontsize=7)
                 
             #tight_layout(0.1)
-    pl.savefig('%s_param_dist.png' %sourcename)
+            #pl.savefig('%s_param_dist.png' %sourcename)
     pl.close(1)
