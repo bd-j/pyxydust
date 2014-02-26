@@ -12,9 +12,10 @@ from modelgrid import *
 class DraineLi(SpecLibrary):
     """DraineLi:: Class to store and operate on Draine & Li 2007 models
     """
+    pyxydustdir, f = os.path.split(__file__)
 
     #spectra in this file are in erg/s/cm^2/AA/M_sun of dust at a distance of 10pc
-    model_file = os.getenv('pyxydust')+'/data/models/DL07.fits'
+    model_file = pyxydustdir + '/data/models/DL07.fits'
     #from model fluxes to Lsun per Msun of dust
     flux_unit = 'erg/s/cm^2/AA of 1solar mass at 10pc' 
     convert_to_lsun = 10**( np.log10(4.0*np.pi)+2*np.log10(pc*10)-np.log10(lsun) ) 

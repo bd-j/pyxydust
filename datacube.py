@@ -1,19 +1,20 @@
 ##some file reading utilities
 import numpy as np
-import pyfits
+import astropy.io.fits as pyfits
 import os
 
 def load_image_cube(imnamelist = None,errnamelist = None,fudge_err= None, **kwargs):
     if imnamelist is None : raise ValueError('No image names specified!!!')
 
     hdr = pyfits.getheader(imnamelist[0])
-    nx = hdr['NAXIS1']
-    ny = hdr['NAXIS2']
+    ny = hdr['NAXIS1']
+    nx = hdr['NAXIS2']
     data_mag = np.zeros([nx,ny,len(imnamelist)])
     data_magerr = np.zeros([nx,ny,len(imnamelist)])
-
+    
     for i,imname in enumerate(imnamelist):
         im = pyfits.open(imname)
+    
         data_mag[:,:,i] = 0-2.5*np.log10(im[0].data/3631.0)
         if os.path.isfile(errnamelist[i]) :
             err = pyfits.open(errnamelist[i])

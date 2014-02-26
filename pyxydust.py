@@ -1,6 +1,6 @@
 import os, time
 import numpy as np
-import pyfits
+import astropy.io.fits as pyfits
 import matplotlib.pyplot as pl
 
 import observate
@@ -17,7 +17,6 @@ class Pyxydust(object):
         self.rp = rp
         self.load_models()
         self.set_default_params()
-
 
     def load_models(self):
         """Load the Draine & Li basis modls, initialize the grid to hold resampled models,
@@ -48,12 +47,20 @@ class Pyxydust(object):
         for parn in self.outparnames:
             self.parval[parn] = np.zeros([self.nx,self.ny,len(self.rp['percentiles'])+1])+float('NaN')
 
+
+        #self.doresid = self.rp.get('return_residuals', False)
         try:
             self.doresid = self.rp['return_residuals']
         except (KeyError):
             self.doresid = False
         if self.doresid is True:
             self.delta_best = np.zeros([self.nx,self.ny,len(self.filterlist)])+float('NaN')
+        try:
+            self.dobestfitspectrum = self.rp['return_best_spectrum']
+        except (KeyError):
+            self.dobestfitspectrum = False
+        if self.dobestfitspectrum is True:
+            self.best_spectrum = np.zeros([self.nx,self.ny,len(self.dl07.wavelength)])+float('NaN')
 
     def fit_image(self):
         """Fit every pixel in an image."""
@@ -86,6 +93,9 @@ class Pyxydust(object):
             for i, fname in enumerate(self.rp['fnamelist']):
                 outfile = '{0}_{1}_{2}.fits'.format(self.rp['outname'], fname,'bestfit_residual')
                 pyfits.writeto(outfile,self.delta_best[:,:,i],header = header, clobber = True)
+        if self.dobestfitspectrum:
+            outfile = '{0}_bestfit_spectrum.fits'.format(self.rp['outname'])
+            pyfits.writeto(outfile,self.best_spectrum, clobber = True)
 
 class PyxydustGrid(Pyxydust):
 
@@ -123,11 +133,15 @@ class PyxydustGrid(Pyxydust):
         lnprob , ltir, dustm, delta_mag = statutils.lnprob_grid(self.dustgrid, obs, err, mask)
         ind_isnum = np.where(np.isfinite(lnprob))[0]
         lnprob_isnum = lnprob[ind_isnum]
-        ind_max=np.argmax(lnprob_isnum)
+        ind_max = np.argmax(lnprob_isnum)
         
         #this should all go to a storage method
         self.max_lnprob[iy,ix] = np.max(lnprob_isnum)
         self.delta_best[iy,ix,:] = delta_mag[ind_isnum[ind_max],:]
+        if self.dobestfitspectrum:
+            self.best_spectrum[iy,ix,:] = (dustm[ind_isnum[ind_max]] *
+                                           self.dl07.spectra_from_pars(self.dustgrid.pars[ind_isnum[ind_max]]))
+        
         for i, parn in enumerate(self.outparnames):
             if parn == 'LDUST':
                 par = np.squeeze(ltir)[ind_isnum]*self.dl07.convert_to_lsun
@@ -197,6 +211,8 @@ class PyxydustMCMC(Pyxydust):
             theta[:,j] = np.random.uniform(self.params[parn]['min'],self.params[parn]['max'])
         return theta
 
+    #    def model(self, umin = umin, umax = umax, gamma = gamma, mdust = mdust, alpha = 2):
+    #    pass
 
     def lnprob(self, theta, obs_maggies, obs_ivar, mask):
         lnprob_parnames = ['UMIN', 'UMAX', 'GAMMA', 'QPAH', 'MDUST']
