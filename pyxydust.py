@@ -3,7 +3,7 @@ import numpy as np
 import astropy.io.fits as pyfits
 import matplotlib.pyplot as pl
 
-import observate
+from sedpy import observate
 import dustmodel
 import statutils
 import datacube
