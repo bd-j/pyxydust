@@ -5,10 +5,12 @@ import os, glob
 import numpy as np
 import astropy.constants as constants
 
-import observate
-from modelgrid import *
+from sedpy import observate
+from sedpy.modelgrid import *
 
-        
+pc = constants.pc.cgs.value
+lsun = constants.L_sun.cgs.value
+
 class DraineLi(SpecLibrary):
     """DraineLi:: Class to store and operate on Draine & Li 2007 models
     """
