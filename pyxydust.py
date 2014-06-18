@@ -14,20 +14,30 @@ class Pyxydust(object):
     doresid = False
 
     def __init__(self, rp):
+        """
+        Initialize.
+
+        :param rp:
+            Dictionary containing a number of important parameters.
+        """
         self.rp = rp
         self.load_models()
         self.set_default_params()
 
     def load_models(self):
-        """Load the Draine & Li basis modls, initialize the grid to hold resampled models,
-        and load the filters"""
+        """
+        Load the Draine & Li basis models, initialize the grid to hold
+        resampled models, and load the filters
+        """
         self.dl07 = dustmodel.DraineLi()  #Draine and Li Basis
         self.dustgrid = dustmodel.SpecLibrary() #object to hold the model grid
         self.filterlist = observate.load_filters(self.rp['fnamelist']) #filter objects
         
     def load_data(self):
-        """Read the image cube and the uncertainty cube, apply distance modulus,
-        and determine 'good' pixels"""
+        """
+        Read the image cube and the uncertainty cube, apply distance
+        modulus, and determine 'good' pixels
+        """
         self.data_mag, self.data_magerr, self.rp['data_header'] = datacube.load_image_cube(**self.rp)
         dm = 5.0*np.log10(self.rp['dist'])+25
         self.data_mag = np.where(self.data_mag != 0.0, self.data_mag-dm, 0.0)
@@ -37,7 +47,10 @@ class Pyxydust(object):
         self.goodpix = np.where(gg.sum(axis = 2) == len(self.rp['imnamelist'])) #restrict to detections in all bands
 
     def setup_output(self):
-        """Create arrays to store fit output for each pixel."""
+        """
+        Create arrays to store fit output for each pixel.
+        """
+        
         self.max_lnprob = np.zeros([self.nx,self.ny])+float('NaN')
         try:
             self.outparnames = self.rp['outparnames']+['LDUST','MDUST']
@@ -63,7 +76,9 @@ class Pyxydust(object):
             self.best_spectrum = np.zeros([self.nx,self.ny,len(self.dl07.wavelength)])+float('NaN')
 
     def fit_image(self):
-        """Fit every pixel in an image."""
+        """
+        Fit every pixel in an image.
+        """
         
         if hasattr(self,'max_lnprob') is False:
             self.setup_output()
@@ -76,7 +91,10 @@ class Pyxydust(object):
 
 
     def write_output(self):
-        """Write stored fit information to FITS files."""
+        """
+        Write stored fit information to FITS files.
+        """
+        
         header = self.rp['data_header']
 
         outfile= '{outname}_CHIBEST.fits'.format(**self.rp)
@@ -100,7 +118,10 @@ class Pyxydust(object):
 class PyxydustGrid(Pyxydust):
 
     def initialize_grid(self, params = None):
-        """Draw grid parameters from prior distributions and build the grid."""
+        """
+        Draw grid or library parameters from prior distributions and
+        build the grid.
+        """
 
         if params is not None:
             self.params = params
@@ -124,9 +145,12 @@ class PyxydustGrid(Pyxydust):
 
 
     def fit_pixel(self, ix, iy, store = True, show_cdf = False):
-        """Determine \chi^2 of every model for a given pixel, and store moments
-        of the CDF for each parameter as well as the bestfitting model parameters.
-        Optionally store magnitude residuals from the best fit."""
+        """
+        Determine \chi^2 of every model for a given pixel, and store
+        moments of the CDF for each parameter as well as the
+        bestfitting model parameters.  Optionally store magnitude
+        residuals from the best fit.
+        """
         obs, err = self.data_mag[iy,ix,:], self.data_magerr[iy,ix,:]
         mask = np.where((obs < 0) & np.isfinite(obs), 1, 0)
     
@@ -158,7 +182,9 @@ class PyxydustGrid(Pyxydust):
 
 
     def set_default_params(self):
-        """Set the default model parameter properties."""
+        """
+        Set the default model parameter properties.
+        """
         #should be list of dicts or dict of lists?  no, dict of dicts!
         qpahmax = self.dl07.par_range(['QPAH'], inds = [self.dl07.delta_inds])[0][1]
         self.params = {}
@@ -169,10 +195,16 @@ class PyxydustGrid(Pyxydust):
 
 
 class PyxydustMCMC(Pyxydust):
-    """Use emcee to do MCMC sampling of the parameter space for a given pixel.  Wildly unfinished/untested"""
+    """
+    Use emcee to do MCMC sampling of the parameter space for a given pixel.
+
+    Wildly unfinished/untested
+    """
 
     def set_default_params(self, large_number = 1e15):
-        """Set the default model parameter ranges."""
+        """
+        Set the default model parameter ranges.
+        """
         #should be list of dicts or dict of lists?  no, dict of dicts!
         qpahmax = self.dl07.par_range(['QPAH'], inds = [self.dl07.delta_inds])[0][1]
         self.params = {}
