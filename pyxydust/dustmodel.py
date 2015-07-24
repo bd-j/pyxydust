@@ -21,12 +21,12 @@ class DraineLi(SpecLibrary):
     # distance of 10pc
     model_file = pyxydustdir + '/data/models/DL07.fits'
     # From model fluxes to Lsun per Msun of dust
-    flux_unit = 'erg/s/cm^2/AA of 1solar mass at 10pc' 
+    flux_unit = 'erg/s/cm^2/AA of 1solar mass at 10pc'
     convert_to_lsun = 10**(np.log10(4 * np.pi) + 2 * np.log10(pc * 10)) / lsun
 
     def __init__(self, modfile=None):
-        if modfile is not(None) :
-            self.model_file=modfile
+        if modfile is not(None):
+            self.model_file = modfile
         self.read_from_fits_library(self.model_file)
 
     def spectra_from_pars(self, parstruct):
@@ -69,32 +69,32 @@ class DraineLi(SpecLibrary):
             The dust mass in units of M_sun. Scalar or ndarray of
             shape (nobj).
 
-        :returns spectrum: 
+        :returns spectrum:
            Spectra interpolated to the requested parameter
            values. Output units are erg/s/cm^2/AA at a distance of
            10pc. ndarray of shape (nobj,nwave)
         """
         umin, umax, gamma = np.atleast_1d(umin, umax, gamma)
-        qpah, alpha, mdust =  np.atleast_1d(qpah, alpha, mdust)
+        qpah, alpha, mdust = np.atleast_1d(qpah, alpha, mdust)
         check = [umin.shape[0] == umax.shape[0],
                  umin.shape[0] == qpah.shape[0]]
         if False in check:
             raise ValueError("Parameter array sizes do not match")
 
         delta_spec = self.interpolate_to_pars(np.array([umin, qpah]).T,
-                                              parnames=['UMIN','QPAH'],
+                                              parnames=['UMIN', 'QPAH'],
                                               subinds=self.delta_inds,
-                                              force_triangulation=True )
+                                              force_triangulation=True)
 
         pdr_spec = np.zeros(self.wavelength.shape[0])
         if np.any(gamma > 0):
             pdr_spec = self.interpolate_to_pars(np.array([umin, umax, qpah]).T,
-                                                parnames=['UMIN','UMAX','QPAH'],
+                                                parnames=['UMIN', 'UMAX', 'QPAH'],
                                                 subinds=self.pdr_inds,
                                                 force_triangulation=True)
 
         total_spec = (1.0 - gamma) * delta_spec.T + gamma * pdr_spec.T
-        return (mdust * total_spec).T                
+        return (mdust * total_spec).T
 
     def ubar(self, umin, umax, gamma, alpha=2):
         """Calculate the dust-mass weighted average starlight heating
@@ -128,18 +128,17 @@ class DraineLi(SpecLibrary):
         return (1 - gamma) * umin + gamma * ubar_pdr
 
     def read_from_fits_library(self, filename, grain='MW3.1'):
-        """
-        Read in the dust SED library of Draine & Li 2007, stored as a
-        fits binary table with spectral units of erg/s/cm^2/AA/M_sun
+        """Read in the dust SED library of Draine & Li 2007, stored as
+        a fits binary table with spectral units of erg/s/cm^2/AA/M_sun
         of dust at a distance of 10pc. Produce index arrays to access
         delta-function and alpha=2 power law dust heating intensity
         distribtions.
         """
-        if os.path.isfile( filename ) is False :
-            raise ValueError('File does not exist: %s',filename)
+        if os.path.isfile(filename) is False:
+            raise ValueError('File does not exist: %s', filename)
             return 0.
 
-        parnames=['UMIN','UMAX','QPAH','GRAIN']
+        parnames = ['UMIN', 'UMAX', 'QPAH', 'GRAIN']
         dat = self.read_model_from_fitsbinary(filename, parnames)
         self.wavelength, self.spectra, self.pars = dat
 
@@ -170,10 +169,9 @@ class ModifiedBB(SpecLibrary):
     def spectraFromPars(self, pars):
         """Wrapper on generateSpectrum that parses a pars structured
         array for the required parameters.
-        """            
+        """
         return self.generateSpectrum(pars['T_DUST'], pars['BETA'],
-                                     pars['M_DUST'] )
-
+                                     pars['M_DUST'])
 
     def generate_spectrum(self, T_dust, beta, M_dust,
                           kappa_lambda0=(1.92, 350e4)):
@@ -186,12 +184,12 @@ class ModifiedBB(SpecLibrary):
         """
         spec = np.zeros([self.wavelength.shape[0]])
         # Should vectorize
-        for i,T in enumerate(T_dust):
+        for i, T in enumerate(T_dust):
             term = (kappa_lambda0[1] / self.wavelength)**beta[i]
             spec += M_dust[i] * self.planck(T) * term * kappa_lambda0[0]
         return spec
-    
-    def planck(self, T) :
+
+    def planck(self, T):
         """Return planck function B_lambda(cgs) for a given T
         """
         wave = self.wavelength*1e8  # Convert from AA to cm
@@ -199,7 +197,3 @@ class ModifiedBB(SpecLibrary):
         conv = 2 * hplank * c_cgs**2 / wave**5 * 1e8
         denom = (np.exp(hplanck * c_cgs / (kboltz * T)) - 1)
         return conv * 1 / denom
-        
-
-        
-
